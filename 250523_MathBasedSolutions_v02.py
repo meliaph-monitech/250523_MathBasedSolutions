@@ -171,3 +171,10 @@ with st.sidebar:
         threshold = st.number_input("LO threshold", value=0.0)
 
         rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated")
+
+        if st.button("Segment Beads"):
+            result_df = process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic=rule_logic)
+            st.dataframe(result_df)
+
+            # Visualize the results (Optional, add interaction for selecting bead number if needed)
+            visualize_bead_signals(result_df, filter_column, csv_files)
