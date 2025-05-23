@@ -154,6 +154,7 @@ if "features_by_bead" in st.session_state:
                 if active_features.get(feature_name, False):  # Only check active features
                     min_val, max_val = thresholds[feature_name]
                     feature_value = features[i]
+                    # Check if the feature is within the thresholds (value should be within min-max)
                     if feature_value < min_val or feature_value > max_val:
                         classification = "NOK"
                         break
