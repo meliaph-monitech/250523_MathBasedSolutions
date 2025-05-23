@@ -117,8 +117,15 @@ with st.sidebar:
         if normalize_option == "Yes":
             normalization_method = st.selectbox("Normalization Method", ["min-max", "z-score"])
 
-        # Calculate global min and max for each feature across all files
-        feature_min_max = defaultdict(lambda: [float('inf'), float('-inf')])  # to store min and max values
+        # # Calculate global min and max for each feature across all files
+        # feature_min_max = defaultdict(lambda: [float('inf'), float('-inf')])  # to store min and max values
+        
+        # Using a regular dictionary to store min and max values for each feature
+        feature_min_max = defaultdict(lambda: [float('inf'), float('-inf')])
+        
+        # Alternative initialization method, making sure we reset min/max properly for each feature
+        feature_min_max = defaultdict(lambda: [None, None])  # Will update based on actual data later
+
         for file in csv_files:
             df = pd.read_csv(file)
             for _, signal_column in df.iterrows():
