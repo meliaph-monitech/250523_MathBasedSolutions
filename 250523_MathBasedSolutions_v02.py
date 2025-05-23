@@ -114,6 +114,7 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
             feature_ranges[feature_name] = (min(feature_values), max(feature_values))
     
     # Step 2: Set sliders based on the real min/max values for each feature
+    thresholds = {}  # Initialize thresholds before updating them dynamically
     for feature_name, (min_val, max_val) in feature_ranges.items():
         min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
         max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
@@ -173,7 +174,7 @@ with st.sidebar:
         rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated")
 
         if st.button("Segment Beads"):
-            result_df = process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic=rule_logic)
+            result_df = process_welding_data(csv_files, {}, normalization_method="min-max", rule_logic=rule_logic)
             st.dataframe(result_df)
 
             # Visualize the results (Optional, add interaction for selecting bead number if needed)
