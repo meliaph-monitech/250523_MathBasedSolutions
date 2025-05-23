@@ -4,9 +4,8 @@ import os
 import pandas as pd
 import numpy as np
 from scipy.stats import skew, kurtosis
-from scipy.fft import fft, fftfreq
+from scipy.fft import fft
 import plotly.graph_objects as go
-from collections import defaultdict
 
 # --- File Extraction ---
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
@@ -103,13 +102,17 @@ with st.sidebar:
 
         rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated = NOK")
 
-        # Threshold inputs for each feature
+        # Threshold inputs for each feature with checkboxes
         feature_rules = {}
         for feature in ['mean', 'std', 'min', 'max', 'median', 'skew', 'kurtosis', 'peak_to_peak', 'energy', 'rms', 'slope', 'entropy', 'autocorrelation']:
             with st.expander(f"Set thresholds for {feature}"):
-                min_val = st.number_input(f"{feature} - Min", value=None, format="%.5f", key=f"{feature}_min")
-                max_val = st.number_input(f"{feature} - Max", value=None, format="%.5f", key=f"{feature}_max")
-                feature_rules[feature] = (min_val if min_val != 0 else None, max_val if max_val != 0 else None)
+                feature_enabled = st.checkbox(f"Use {feature} as threshold", value=True, key=f"{feature}_enabled")
+                if feature_enabled:
+                    min_val = st.number_input(f"{feature} - Min", value=None, format="%.5f", key=f"{feature}_min")
+                    max_val = st.number_input(f"{feature} - Max", value=None, format="%.5f", key=f"{feature}_max")
+                    feature_rules[feature] = (min_val if min_val != 0 else None, max_val if max_val != 0 else None)
+                else:
+                    feature_rules[feature] = (None, None)
 
         if st.button("Run Analysis"):
             metadata = []
