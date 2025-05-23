@@ -82,6 +82,16 @@ def evaluate_rules(features, rules, logic_mode):
     return any(violations) if logic_mode == 'any' else all(violations)
 
 
+# --- Normalization Methods ---
+def normalize_signal(signal, method="min-max"):
+    if method == "min-max":
+        return (signal - np.min(signal)) / (np.max(signal) - np.min(signal)) if np.max(signal) - np.min(signal) != 0 else signal
+    elif method == "z-score":
+        return (signal - np.mean(signal)) / np.std(signal) if np.std(signal) != 0 else signal
+    else:
+        return signal  # No normalization if method is not recognized
+
+
 # --- Streamlit UI ---
 st.set_page_config(layout="wide")
 st.title("Laser Welding Anomaly Detection (Math Rule-Based)")
@@ -102,15 +112,30 @@ with st.sidebar:
 
         rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated = NOK")
 
-        # Threshold inputs for each feature with checkboxes
+        # Normalization options
+        normalize_option = st.radio("Normalize signal?", ["No", "Yes"], index=0)
+        if normalize_option == "Yes":
+            normalization_method = st.selectbox("Normalization Method", ["min-max", "z-score"])
+
+        # Calculate global min and max for each feature across all files
+        feature_min_max = defaultdict(lambda: [float('inf'), float('-inf')])  # to store min and max values
+        for file in csv_files:
+            df = pd.read_csv(file)
+            for _, signal_column in df.iterrows():
+                features = extract_features(signal_column)
+                for feature, value in features.items():
+                    feature_min_max[feature][0] = min(feature_min_max[feature][0], value)
+                    feature_min_max[feature][1] = max(feature_min_max[feature][1], value)
+
+        # Feature threshold sliders
         feature_rules = {}
         for feature in ['mean', 'std', 'min', 'max', 'median', 'skew', 'kurtosis', 'peak_to_peak', 'energy', 'rms', 'slope', 'entropy', 'autocorrelation']:
             with st.expander(f"Set thresholds for {feature}"):
                 feature_enabled = st.checkbox(f"Use {feature} as threshold", value=True, key=f"{feature}_enabled")
                 if feature_enabled:
-                    min_val = st.number_input(f"{feature} - Min", value=None, format="%.5f", key=f"{feature}_min")
-                    max_val = st.number_input(f"{feature} - Max", value=None, format="%.5f", key=f"{feature}_max")
-                    feature_rules[feature] = (min_val if min_val != 0 else None, max_val if max_val != 0 else None)
+                    min_val, max_val = feature_min_max[feature]
+                    threshold_slider = st.slider(f"{feature} Threshold", min_value=min_val, max_value=max_val, value=(min_val, max_val))
+                    feature_rules[feature] = (threshold_slider[0], threshold_slider[1])
                 else:
                     feature_rules[feature] = (None, None)
 
@@ -121,6 +146,9 @@ with st.sidebar:
                 segments = segment_beads(df, filter_column, threshold)
                 for bead_num, (start, end) in enumerate(segments, start=1):
                     signal = df[signal_column].iloc[start:end+1].values
+                    # Normalize signal based on the selected method
+                    if normalize_option == "Yes":
+                        signal = normalize_signal(signal, method=normalization_method)
                     features = extract_features(signal)
                     status = "NOK" if evaluate_rules(features, feature_rules, rule_logic) else "OK"
                     metadata.append({"file": file, "bead_number": bead_num, "status": status, "start": start, "end": end})
@@ -141,6 +169,8 @@ if "results" in st.session_state:
     for _, row in results_df[results_df["bead_number"] == selected_bead].iterrows():
         df = pd.read_csv(row["file"])
         signal = df[signal_column].iloc[row["start"]:row["end"]+1].values
+        if normalize_option == "Yes":
+            signal = normalize_signal(signal, method=normalization_method)
         color = "red" if row["status"] == "NOK" else "black"
         fig.add_trace(go.Scatter(y=signal, mode="lines", line=dict(color=color, width=1), name=f"{row['file']} ({row['status']})"))
 
