@@ -5,34 +5,38 @@ import os
 import plotly.graph_objects as go
 from scipy.stats import skew, kurtosis
 from collections import defaultdict
+import streamlit as st
 
-# --- Optimized File Extraction ---
-def extract_zip(zip_path, extract_dir="extracted_csvs"):
+# --- Handle Streamlit file upload ---
+def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
     if os.path.exists(extract_dir):
         for file in os.listdir(extract_dir):
             os.remove(os.path.join(extract_dir, file))
     else:
         os.makedirs(extract_dir)
 
-    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+    # Write the uploaded file to disk
+    with open(os.path.join(extract_dir, uploaded_file.name), "wb") as f:
+        f.write(uploaded_file.getbuffer())
+
+    # Extract the uploaded zip file
+    with zipfile.ZipFile(os.path.join(extract_dir, uploaded_file.name), 'r') as zip_ref:
         zip_ref.extractall(extract_dir)
 
+    # Return the paths of the extracted CSV files
     return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
 
 
 # --- Vectorized Bead Segmentation ---
 def segment_beads(df, column, threshold):
     signal = df[column].to_numpy()
-    # Use numpy to find the indices where signal is greater than threshold
     mask = signal > threshold
     start_indices = np.where(np.diff(mask.astype(int)) == 1)[0] + 1
     end_indices = np.where(np.diff(mask.astype(int)) == -1)[0]
     
-    # Check if there is an unclosed bead at the end of the signal
     if mask[-1]:
         end_indices = np.append(end_indices, len(signal) - 1)
         
-    # Pair start and end indices
     return list(zip(start_indices, end_indices))
 
 
@@ -44,12 +48,11 @@ def extract_features(signal):
         'min': np.min(signal),
         'max': np.max(signal),
         'median': np.median(signal),
-        'peak_to_peak': np.ptp(signal),  # Peak-to-peak for fluctuations
-        'skew': skew(signal),  # Asymmetry
-        'kurtosis': kurtosis(signal),  # Tailedness
+        'peak_to_peak': np.ptp(signal),
+        'skew': skew(signal),
+        'kurtosis': kurtosis(signal),
     }
     
-    # Autocorrelation for periodicity detection
     lag = 1
     autocorr = np.corrcoef(signal[:-lag], signal[lag:])[0, 1] if len(signal) > lag else 0
     features['autocorrelation'] = autocorr
@@ -92,7 +95,6 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
             segments = segment_beads(df, feature, threshold)
             for start, end in segments:
                 signal = df[feature].iloc[start:end+1].values
-                # Normalize signal based on the selected method
                 if normalization_method:
                     signal = normalize_signal(signal, method=normalization_method)
                 features = extract_features(signal)
@@ -105,10 +107,9 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
 # --- Visualization of Results ---
 def visualize_bead_signals(results_df, signal_column, thresholds, csv_files):
     bead_numbers = sorted(results_df["bead_number"].unique())
-    selected_bead = bead_numbers[0]  # You can change this to let users select a bead number
+    selected_bead = bead_numbers[0]
     fig = go.Figure()
 
-    # Iterate through results and plot the signals for selected bead
     for _, row in results_df[results_df["bead_number"] == selected_bead].iterrows():
         df = pd.read_csv(row["file"])
         signal = df[signal_column].iloc[row["start"]:row["end"]+1].values
@@ -119,23 +120,40 @@ def visualize_bead_signals(results_df, signal_column, thresholds, csv_files):
     fig.show()
 
 
-# --- Example Usage ---
-# Define the thresholds for each feature (customize as necessary)
-thresholds = {
-    'mean': (None, None),  # No threshold specified for simplicity
-    'std': (None, None),
-    'min': (None, None),
-    'max': (None, None),
-    'median': (None, None),
-    'peak_to_peak': (None, None),
-}
+# --- Streamlit UI ---
+st.set_page_config(layout="wide")
+st.title("Laser Welding Anomaly Detection (Math Rule-Based)")
 
-# Process the welding data
-csv_files = extract_zip("path_to_zip_file.zip")
-result_df = process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic="any")
+with st.sidebar:
+    uploaded_file = st.file_uploader("Upload ZIP with CSVs", type="zip")
+    
+    if uploaded_file:
+        # Extract the zip file and get the CSV files
+        csv_files = extract_zip(uploaded_file)
+        st.success(f"Extracted {len(csv_files)} CSV files")
 
-# Show result
-print(result_df)
+        # Initialize and configure the UI
+        df_sample = pd.read_csv(csv_files[0])
+        columns = df_sample.columns.tolist()
+        filter_column = st.selectbox("Select column for filtering", columns)
+        threshold = st.number_input("LO threshold", value=0.0)
+        signal_column = st.selectbox("Signal column for feature extraction", [col for col in columns if df_sample[col].dtype in [np.float64, np.int64]])
 
-# Visualize the bead signal for the first bead number (you can modify for user selection)
-visualize_bead_signals(result_df, "your_signal_column_name", thresholds, csv_files)
+        rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated = NOK")
+
+        # Define thresholds for each feature
+        thresholds = {
+            'mean': (None, None),  # Example for no threshold, adjust as needed
+            'std': (None, None),
+            'min': (None, None),
+            'max': (None, None),
+            'median': (None, None),
+            'peak_to_peak': (None, None),
+        }
+
+        if st.button("Run Analysis"):
+            result_df = process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic="any")
+            st.dataframe(result_df)
+
+            # Visualize the results (Optional, add interaction for selecting bead number if needed)
+            visualize_bead_signals(result_df, signal_column, thresholds, csv_files)
