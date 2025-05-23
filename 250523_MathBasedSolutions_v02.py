@@ -91,8 +91,12 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
     for file in csv_files:
         df = pd.read_csv(file)
 
-        # Assume the user selects the correct signal column (e.g., NIR or VIS)
-        signal_column_index = df.columns.get_loc("signal_column")  # Replace "signal_column" with actual column name
+        # Get the list of columns and allow the user to select the signal column
+        columns = df.columns.tolist()
+        signal_column_name = st.selectbox("Select the signal column", columns)
+
+        # Get the index of the selected signal column
+        signal_column_index = df.columns.get_loc(signal_column_name)
         
         for feature_name, threshold in thresholds.items():
             segments = segment_beads(df, signal_column_index, threshold)
@@ -140,7 +144,6 @@ with st.sidebar:
         columns = df_sample.columns.tolist()
         filter_column = st.selectbox("Select column for filtering", columns)
         threshold = st.number_input("LO threshold", value=0.0)
-        signal_column = st.selectbox("Signal column for feature extraction", [col for col in columns if df_sample[col].dtype in [np.float64, np.int64]])
 
         rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated = NOK")
 
@@ -156,4 +159,4 @@ with st.sidebar:
             st.dataframe(result_df)
 
             # Visualize the results (Optional, add interaction for selecting bead number if needed)
-            visualize_bead_signals(result_df, signal_column, csv_files)
+            visualize_bead_signals(result_df, "signal_column", csv_files)
