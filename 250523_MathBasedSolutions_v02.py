@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from scipy.stats import skew, kurtosis
 import numpy as np
-from collections import defaultdict  # Ensure this import is present
+from collections import defaultdict
 
 # --- Optimized File Extraction ---
 def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
@@ -102,9 +102,10 @@ with st.sidebar:
             st.success("Bead segmentation complete")
             st.session_state["metadata"] = metadata
 
+        # Feature extraction and thresholds
         if st.button("Run Feature Extraction") and "metadata" in st.session_state:
             with st.spinner("Extracting features..."):
-                features_by_bead = defaultdict(list)  # Ensure this is correctly initialized
+                features_by_bead = defaultdict(list)  # Store features by bead number
                 for entry in st.session_state["metadata"]:
                     df = pd.read_csv(entry["file"])
                     bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
@@ -114,13 +115,45 @@ with st.sidebar:
                 st.success("Feature extraction complete")
                 st.session_state["features_by_bead"] = features_by_bead
 
+# --- Display and Adjust Sliders for Each Feature ---
 if "features_by_bead" in st.session_state:
     st.subheader("Feature Extraction Results")
-    # Display the extracted features for each bead
-    results_df = pd.DataFrame([
-        {"File Name": entry["file"], "Bead Number": entry["bead_number"], "Features": features}
-        for entry, features in zip(st.session_state["metadata"], st.session_state["features_by_bead"].values())
-    ])
+
+    # Extract feature names for sliders
+    feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", 
+                     "Skewness", "Kurtosis", "Peak-to-Peak"]
+    
+    # Display sliders for each feature (using min and max for each)
+    thresholds = {}
+    for feature_name, idx in zip(feature_names, range(8)):
+        feature_values = []
+        for bead_number, feature_list in st.session_state["features_by_bead"].items():
+            feature_values.extend([features[idx] for features in feature_list])
+        
+        min_val, max_val = min(feature_values), max(feature_values)
+        min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
+        max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
+        thresholds[feature_name] = (min_threshold, max_threshold)
+
+    # Bead classification based on thresholds
+    results = []
+    for bead_number, feature_list in st.session_state["features_by_bead"].items():
+        for features in feature_list:
+            classification = "OK"
+            for i, feature_name in enumerate(feature_names):
+                min_val, max_val = thresholds[feature_name]
+                feature_value = features[i]
+                if feature_value < min_val or feature_value > max_val:
+                    classification = "NOK"
+                    break
+            results.append({
+                "Bead Number": bead_number,
+                "Classification": classification,
+                "Features": features
+            })
+
+    # Show results in a table
+    results_df = pd.DataFrame(results)
     st.dataframe(results_df)
 
     # --- Visualize the bead signals
@@ -139,10 +172,15 @@ if "features_by_bead" in st.session_state:
             df = pd.read_csv(file_name)
             signal = df.iloc[start_idx:end_idx + 1, 0].values
 
+            # Get bead classification from results
+            classification = results_df.loc[results_df["Bead Number"] == selected_bead, "Classification"].values[0]
+            color = 'red' if classification == "NOK" else 'black'
+
             fig.add_trace(go.Scatter(
                 y=signal,
                 mode='lines',
-                name=f"File: {file_name}, Bead: {selected_bead}"
+                name=f"File: {file_name}, Bead: {selected_bead}",
+                line=dict(color=color)
             ))
 
         fig.update_layout(
