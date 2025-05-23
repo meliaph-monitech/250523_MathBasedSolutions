@@ -109,6 +109,9 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
 
     for file in csv_files:
         df = pd.read_csv(file)
+        columns = df.columns.tolist()
+        signal_column_name = st.session_state.filter_column
+        signal_column_index = df.columns.get_loc(signal_column_name)
 
         for feature_name, threshold in thresholds.items():
             segments = segment_beads(df, signal_column_index, threshold[0])
@@ -161,9 +164,15 @@ with st.sidebar:
 
         if st.button("Segment Beads"):
             result_df = process_welding_data(csv_files, {}, normalization_method="min-max", rule_logic="any")
-            st.dataframe(result_df)
+            st.session_state.result_df = result_df  # Store result in session state
 
             visualize_bead_signals(result_df, filter_column, csv_files)
-        
-        rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated")
-        st.session_state.rule_logic = rule_logic
+
+# Main display for results
+if "result_df" in st.session_state:
+    st.subheader("Detection Results")
+    st.dataframe(st.session_state.result_df[["file", "bead_number", "status"]])
+
+    # Optionally, show the rule logic selector here
+    rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated")
+    st.session_state.rule_logic = rule_logic
