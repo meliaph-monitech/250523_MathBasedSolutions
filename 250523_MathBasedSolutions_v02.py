@@ -115,25 +115,30 @@ with st.sidebar:
                 st.success("Feature extraction complete")
                 st.session_state["features_by_bead"] = features_by_bead
 
-# --- Display and Adjust Sliders for Each Feature ---
+        # Add Feature Sliders for the user
+        st.subheader("Set Thresholds for Feature Extraction")
+
+        feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", 
+                         "Skewness", "Kurtosis", "Peak-to-Peak"]
+
+        thresholds = {}
+        for feature_name, idx in zip(feature_names, range(8)):
+            feature_values = []
+            for bead_number, feature_list in st.session_state["features_by_bead"].items():
+                feature_values.extend([features[idx] for features in feature_list])
+            
+            min_val, max_val = min(feature_values), max(feature_values)
+            min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
+            max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
+            thresholds[feature_name] = (min_threshold, max_threshold)
+
+# --- Display and Classify Beads ---
 if "features_by_bead" in st.session_state:
     st.subheader("Feature Extraction Results")
 
     # Extract feature names for sliders
     feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", 
                      "Skewness", "Kurtosis", "Peak-to-Peak"]
-    
-    # Display sliders for each feature (using min and max for each)
-    thresholds = {}
-    for feature_name, idx in zip(feature_names, range(8)):
-        feature_values = []
-        for bead_number, feature_list in st.session_state["features_by_bead"].items():
-            feature_values.extend([features[idx] for features in feature_list])
-        
-        min_val, max_val = min(feature_values), max(feature_values)
-        min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
-        max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
-        thresholds[feature_name] = (min_threshold, max_threshold)
 
     # Bead classification based on thresholds
     results = []
@@ -156,7 +161,8 @@ if "features_by_bead" in st.session_state:
     results_df = pd.DataFrame(results)
     st.dataframe(results_df)
 
-    # --- Visualize the bead signals
+# --- Visualize the bead signals
+if "features_by_bead" in st.session_state:
     bead_numbers = sorted(set(entry["bead_number"] for entry in st.session_state["metadata"]))
     selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
 
