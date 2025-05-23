@@ -27,8 +27,8 @@ def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
 
 
 # --- Vectorized Bead Segmentation ---
-def segment_beads(df, column, threshold):
-    signal = df[column].to_numpy()
+def segment_beads(df, column_index, threshold):
+    signal = df.iloc[:, column_index].to_numpy()
     mask = signal > threshold
     start_indices = np.where(np.diff(mask.astype(int)) == 1)[0] + 1
     end_indices = np.where(np.diff(mask.astype(int)) == -1)[0]
@@ -60,9 +60,9 @@ def extract_features(signal):
 
 
 # --- Threshold Evaluation Optimization ---
-def evaluate_rules(features, rules, logic_mode):
+def evaluate_rules(features, thresholds, logic_mode):
     violations = []
-    for feature, bounds in rules.items():
+    for feature, bounds in thresholds.items():
         val = features.get(feature, None)
         if val is None:
             continue
@@ -90,10 +90,14 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
     metadata = []
     for file in csv_files:
         df = pd.read_csv(file)
-        for feature, threshold in thresholds.items():
-            segments = segment_beads(df, feature, threshold)
+
+        for feature_name, threshold in thresholds.items():
+            # Get the index of the feature column
+            feature_index = df.columns.get_loc(feature_name)
+            
+            segments = segment_beads(df, feature_index, threshold)
             for start, end in segments:
-                signal = df[feature].iloc[start:end+1].values
+                signal = df.iloc[start:end+1, feature_index].values
                 if normalization_method:
                     signal = normalize_signal(signal, method=normalization_method)
                 features = extract_features(signal)
@@ -140,15 +144,12 @@ with st.sidebar:
 
         rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated = NOK")
 
-        # Define thresholds for each feature
-        thresholds = {
-            'mean': (None, None),  # No threshold specified for simplicity
-            'std': (None, None),
-            'min': (None, None),
-            'max': (None, None),
-            'median': (None, None),
-            'peak_to_peak': (None, None),
-        }
+        # Define thresholds dynamically via sliders for each feature
+        thresholds = {}
+        for feature in ['mean', 'std', 'min', 'max', 'median', 'peak_to_peak', 'skew', 'kurtosis']:
+            min_threshold = st.slider(f"{feature} - Min", -10.0, 10.0, -1.0)
+            max_threshold = st.slider(f"{feature} - Max", -10.0, 10.0, 1.0)
+            thresholds[feature] = (min_threshold, max_threshold)
 
         if st.button("Run Analysis"):
             result_df = process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic="any")
