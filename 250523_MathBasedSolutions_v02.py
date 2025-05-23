@@ -6,6 +6,7 @@ import numpy as np
 from scipy.stats import skew, kurtosis
 from scipy.fft import fft
 import plotly.graph_objects as go
+from collections import defaultdict
 
 # --- File Extraction ---
 def extract_zip(zip_path, extract_dir="extracted_csvs"):
@@ -117,22 +118,17 @@ with st.sidebar:
         if normalize_option == "Yes":
             normalization_method = st.selectbox("Normalization Method", ["min-max", "z-score"])
 
-        # # Calculate global min and max for each feature across all files
-        # feature_min_max = defaultdict(lambda: [float('inf'), float('-inf')])  # to store min and max values
-        
-        # Using a regular dictionary to store min and max values for each feature
-        feature_min_max = defaultdict(lambda: [float('inf'), float('-inf')])
-        
-        # Alternative initialization method, making sure we reset min/max properly for each feature
-        feature_min_max = defaultdict(lambda: [None, None])  # Will update based on actual data later
-
+        # Calculate global min and max for each feature across all files
+        feature_min_max = defaultdict(lambda: [float('inf'), float('-inf')])  # Initialize with inf values
         for file in csv_files:
             df = pd.read_csv(file)
             for _, signal_column in df.iterrows():
                 features = extract_features(signal_column)
                 for feature, value in features.items():
-                    feature_min_max[feature][0] = min(feature_min_max[feature][0], value)
-                    feature_min_max[feature][1] = max(feature_min_max[feature][1], value)
+                    # Update min/max values for each feature
+                    current_min, current_max = feature_min_max[feature]
+                    feature_min_max[feature][0] = min(current_min, value) if current_min != float('inf') else value
+                    feature_min_max[feature][1] = max(current_max, value) if current_max != float('-inf') else value
 
         # Feature threshold sliders
         feature_rules = {}
