@@ -170,18 +170,4 @@ with st.sidebar:
         filter_column = st.selectbox("Select column for filtering", columns)
         threshold = st.number_input("LO threshold", value=0.0)
 
-        rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated = NOK")
-
-        # Define thresholds dynamically via sliders for each feature
-        thresholds = {}
-        for feature in ['mean', 'std', 'min', 'max', 'median', 'peak_to_peak', 'skew', 'kurtosis']:
-            min_threshold = st.slider(f"{feature} - Min", -10.0, 10.0, -1.0)
-            max_threshold = st.slider(f"{feature} - Max", -10.0, 10.0, 1.0)
-            thresholds[feature] = (min_threshold, max_threshold)
-
-        if st.button("Run Analysis"):
-            result_df = process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic="any")
-            st.dataframe(result_df)
-
-            # Visualize the results (Optional, add interaction for selecting bead number if needed)
-            visualize_bead_signals(result_df, "signal_column", csv_files)
+        rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated
