@@ -131,7 +131,7 @@ with st.sidebar:
                 feature_values.extend([features[idx] for features in feature_list])
             
             min_val, max_val = min(feature_values), max(feature_values)
-            active_features[feature_name] = st.checkbox(f"Activate {feature_name}", value=True)
+            active_features[feature_name] = st.checkbox(f"Activate {feature_name}", value=False)  # Set to False to be unchecked initially
             if active_features[feature_name]:
                 min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
                 max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
