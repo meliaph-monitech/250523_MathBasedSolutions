@@ -115,22 +115,27 @@ with st.sidebar:
                 st.success("Feature extraction complete")
                 st.session_state["features_by_bead"] = features_by_bead
 
-        # Add Feature Sliders for the user
+        # Add Feature Sliders for the user to set thresholds in the sidebar
         st.subheader("Set Thresholds for Feature Extraction")
 
         feature_names = ["Mean Value", "STD Value", "Min Value", "Max Value", "Median Value", 
                          "Skewness", "Kurtosis", "Peak-to-Peak"]
 
+        # Store active features in a dictionary
         thresholds = {}
+        active_features = {}
+
         for feature_name, idx in zip(feature_names, range(8)):
             feature_values = []
             for bead_number, feature_list in st.session_state["features_by_bead"].items():
                 feature_values.extend([features[idx] for features in feature_list])
             
             min_val, max_val = min(feature_values), max(feature_values)
-            min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
-            max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
-            thresholds[feature_name] = (min_threshold, max_threshold)
+            active_features[feature_name] = st.checkbox(f"Activate {feature_name}", value=True)
+            if active_features[feature_name]:
+                min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
+                max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
+                thresholds[feature_name] = (min_threshold, max_threshold)
 
 # --- Display and Classify Beads ---
 if "features_by_bead" in st.session_state:
@@ -146,11 +151,12 @@ if "features_by_bead" in st.session_state:
         for features in feature_list:
             classification = "OK"
             for i, feature_name in enumerate(feature_names):
-                min_val, max_val = thresholds[feature_name]
-                feature_value = features[i]
-                if feature_value < min_val or feature_value > max_val:
-                    classification = "NOK"
-                    break
+                if active_features.get(feature_name, False):  # Only check active features
+                    min_val, max_val = thresholds[feature_name]
+                    feature_value = features[i]
+                    if feature_value < min_val or feature_value > max_val:
+                        classification = "NOK"
+                        break
             results.append({
                 "Bead Number": bead_number,
                 "Classification": classification,
