@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import zipfile
 import os
+from scipy.stats import skew, kurtosis
 from collections import defaultdict
 
 # --- Optimized File Extraction ---
@@ -16,6 +17,7 @@ def extract_zip(zip_path, extract_dir="extracted_csvs"):
         zip_ref.extractall(extract_dir)
 
     return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
+
 
 # --- Vectorized Bead Segmentation ---
 def segment_beads(df, column, threshold):
@@ -32,19 +34,27 @@ def segment_beads(df, column, threshold):
     # Pair start and end indices
     return list(zip(start_indices, end_indices))
 
-# --- Batch Feature Extraction (Simplified) ---
+
+# --- Feature Extraction for Trembling Patterns ---
 def extract_features(signal):
-    # Vectorized calculations for basic features (mean, std, min, max, median, peak-to-peak)
     features = {
         'mean': np.mean(signal),
         'std': np.std(signal),
         'min': np.min(signal),
         'max': np.max(signal),
         'median': np.median(signal),
-        'peak_to_peak': np.ptp(signal),  # peak-to-peak is just max - min
+        'peak_to_peak': np.ptp(signal),  # Peak-to-peak for fluctuations
+        'skew': skew(signal),  # Asymmetry
+        'kurtosis': kurtosis(signal),  # Tailedness
     }
     
+    # Autocorrelation for periodicity detection
+    lag = 1
+    autocorr = np.corrcoef(signal[:-lag], signal[lag:])[0, 1] if len(signal) > lag else 0
+    features['autocorrelation'] = autocorr
+    
     return features
+
 
 # --- Threshold Evaluation Optimization ---
 def evaluate_rules(features, rules, logic_mode):
@@ -61,6 +71,7 @@ def evaluate_rules(features, rules, logic_mode):
     
     return any(violations) if logic_mode == 'any' else all(violations)
 
+
 # --- Normalize Signal Efficiently ---
 def normalize_signal(signal, method="min-max"):
     if method == "min-max":
@@ -69,6 +80,7 @@ def normalize_signal(signal, method="min-max"):
         return (signal - np.mean(signal)) / np.std(signal) if np.std(signal) != 0 else signal
     else:
         return signal
+
 
 # --- Main Function (Optimized for Faster Execution) ---
 def process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic="any"):
@@ -88,10 +100,11 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
     
     return pd.DataFrame(metadata)
 
+
 # --- Example Usage ---
-# Define the thresholds for each feature
+# Define the thresholds for each feature (customize as necessary)
 thresholds = {
-    'mean': (None, None),  # Example for no threshold, adjust as needed
+    'mean': (None, None),  # No threshold specified for simplicity
     'std': (None, None),
     'min': (None, None),
     'max': (None, None),
