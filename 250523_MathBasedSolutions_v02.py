@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import zipfile
 import os
+import plotly.graph_objects as go
 from scipy.stats import skew, kurtosis
 from collections import defaultdict
 
@@ -101,6 +102,23 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
     return pd.DataFrame(metadata)
 
 
+# --- Visualization of Results ---
+def visualize_bead_signals(results_df, signal_column, thresholds, csv_files):
+    bead_numbers = sorted(results_df["bead_number"].unique())
+    selected_bead = bead_numbers[0]  # You can change this to let users select a bead number
+    fig = go.Figure()
+
+    # Iterate through results and plot the signals for selected bead
+    for _, row in results_df[results_df["bead_number"] == selected_bead].iterrows():
+        df = pd.read_csv(row["file"])
+        signal = df[signal_column].iloc[row["start"]:row["end"]+1].values
+        color = "red" if row["status"] == "NOK" else "black"
+        fig.add_trace(go.Scatter(y=signal, mode="lines", line=dict(color=color, width=1), name=f"{row['file']} ({row['status']})"))
+
+    fig.update_layout(title=f"Bead #{selected_bead} Signal Comparison", xaxis_title="Index", yaxis_title=signal_column)
+    fig.show()
+
+
 # --- Example Usage ---
 # Define the thresholds for each feature (customize as necessary)
 thresholds = {
@@ -118,3 +136,6 @@ result_df = process_welding_data(csv_files, thresholds, normalization_method="mi
 
 # Show result
 print(result_df)
+
+# Visualize the bead signal for the first bead number (you can modify for user selection)
+visualize_bead_signals(result_df, "your_signal_column_name", thresholds, csv_files)
