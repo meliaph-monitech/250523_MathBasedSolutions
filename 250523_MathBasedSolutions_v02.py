@@ -157,7 +157,6 @@ def visualize_bead_signals(results_df, signal_column, csv_files):
     st.plotly_chart(fig, use_container_width=True)
 
 
-
 # --- Streamlit UI ---
 st.set_page_config(layout="wide")
 st.title("Laser Welding Anomaly Detection (Math Rule-Based)")
