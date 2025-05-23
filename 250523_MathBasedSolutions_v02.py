@@ -91,10 +91,10 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
     for file in csv_files:
         df = pd.read_csv(file)
 
+        # Assume the user selects the correct signal column (e.g., NIR or VIS)
+        signal_column_index = df.columns.get_loc("signal_column")  # Replace "signal_column" with actual column name
+        
         for feature_name, threshold in thresholds.items():
-            # Extract signal column index
-            signal_column_index = df.columns.get_loc('signal_column')  # Assumes you know the column name for the signal
-
             segments = segment_beads(df, signal_column_index, threshold)
             for start, end in segments:
                 signal = df.iloc[start:end+1, signal_column_index].values
