@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from scipy.stats import skew, kurtosis
 import numpy as np
+from collections import defaultdict  # Ensure this import is present
 
 # --- Optimized File Extraction ---
 def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
@@ -103,7 +104,7 @@ with st.sidebar:
 
         if st.button("Run Feature Extraction") and "metadata" in st.session_state:
             with st.spinner("Extracting features..."):
-                features_by_bead = defaultdict(list)
+                features_by_bead = defaultdict(list)  # Ensure this is correctly initialized
                 for entry in st.session_state["metadata"]:
                     df = pd.read_csv(entry["file"])
                     bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
