@@ -87,6 +87,7 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
     metadata = []
     feature_ranges = {feature: [] for feature in thresholds}
     
+    # Step 1: Calculate feature min/max values dynamically
     for file in csv_files:
         df = pd.read_csv(file)
         columns = df.columns.tolist()
@@ -95,18 +96,21 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
 
         for feature_name in thresholds.keys():
             feature_values = []
-            for start, end in segment_beads(df, signal_column_index, 0.0):
+            # Segment the beads and extract the features dynamically
+            for bead_number, (start, end) in enumerate(segment_beads(df, signal_column_index, 0.0), start=1):  # Assign bead_number
                 signal = df.iloc[start:end+1, signal_column_index].values
                 features = extract_features(signal)
                 feature_values.append(features[feature_name])
 
             feature_ranges[feature_name] = (min(feature_values), max(feature_values))
     
+    # Set sliders based on min/max values for each feature
     for feature_name, (min_val, max_val) in feature_ranges.items():
         min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
         max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
         thresholds[feature_name] = (min_threshold, max_threshold)
 
+    # Create metadata for bead number classification (OK/NOK)
     for file in csv_files:
         df = pd.read_csv(file)
         columns = df.columns.tolist()
@@ -115,19 +119,30 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
 
         for feature_name, threshold in thresholds.items():
             segments = segment_beads(df, signal_column_index, threshold[0])
-            for start, end in segments:
+            for bead_number, (start, end) in enumerate(segments, start=1):  # Corrected bead_number assignment
                 signal = df.iloc[start:end+1, signal_column_index].values
                 if normalization_method:
                     signal = normalize_signal(signal, method=normalization_method)
                 features = extract_features(signal)
                 status = "NOK" if evaluate_rules(features, thresholds, rule_logic) else "OK"
-                metadata.append({"file": file, "bead_number": start, "status": status, "start": start, "end": end})
+                metadata.append({
+                    "file": file,
+                    "bead_number": bead_number,  # Ensure bead_number is stored
+                    "status": status,
+                    "start": start,
+                    "end": end
+                })
     
     return pd.DataFrame(metadata)
 
 
 # --- Visualization of Results ---
 def visualize_bead_signals(results_df, signal_column, csv_files):
+    # Check if the "bead_number" column exists in the results DataFrame
+    if "bead_number" not in results_df.columns:
+        st.error("'bead_number' column is missing in the results dataframe.")
+        return
+
     bead_numbers = sorted(results_df["bead_number"].unique())
     selected_bead = st.selectbox("Select Bead Number", bead_numbers)
     fig = go.Figure()
@@ -140,6 +155,7 @@ def visualize_bead_signals(results_df, signal_column, csv_files):
 
     fig.update_layout(title=f"Bead #{selected_bead} Signal Comparison", xaxis_title="Index", yaxis_title=signal_column)
     st.plotly_chart(fig, use_container_width=True)
+
 
 
 # --- Streamlit UI ---
