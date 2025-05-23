@@ -88,7 +88,6 @@ def normalize_signal(signal, method="min-max"):
 # --- Main Function (Optimized for Faster Execution) ---
 def process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic="any"):
     metadata = []
-    # Initialize dictionaries to store feature min/max values
     feature_ranges = {feature: [] for feature in thresholds}
     
     # Step 1: Calculate feature min/max values dynamically
@@ -114,7 +113,6 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
             feature_ranges[feature_name] = (min(feature_values), max(feature_values))
     
     # Step 2: Set sliders based on the real min/max values for each feature
-    thresholds = {}  # Initialize thresholds before updating them dynamically
     for feature_name, (min_val, max_val) in feature_ranges.items():
         min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
         max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
@@ -165,16 +163,29 @@ with st.sidebar:
         csv_files = extract_zip(uploaded_file)
         st.success(f"Extracted {len(csv_files)} CSV files")
 
+        # Store csv_files in session state
+        st.session_state.csv_files = csv_files
+
         # Initialize and configure the UI
         df_sample = pd.read_csv(csv_files[0])
         columns = df_sample.columns.tolist()
         filter_column = st.selectbox("Select column for filtering", columns)
         threshold = st.number_input("LO threshold", value=0.0)
 
+        # Store the selected filter column and threshold in session state
+        st.session_state.filter_column = filter_column
+        st.session_state.threshold = threshold
+
         rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated")
 
+        # Store the rule logic in session state
+        st.session_state.rule_logic = rule_logic
+
         if st.button("Segment Beads"):
-            result_df = process_welding_data(csv_files, {}, normalization_method="min-max", rule_logic=rule_logic)
+            # Retrieve session state values
+            thresholds = st.session_state.get("thresholds", {})
+
+            result_df = process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic=rule_logic)
             st.dataframe(result_df)
 
             # Visualize the results (Optional, add interaction for selecting bead number if needed)
