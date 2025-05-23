@@ -1,9 +1,5 @@
 streamlit
 pandas
 numpy
-scikit-learn
+scipy
 plotly
-zipfile
-os
-matplotlib.pyplot
-io
