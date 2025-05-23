@@ -88,9 +88,10 @@ def normalize_signal(signal, method="min-max"):
 # --- Main Function (Optimized for Faster Execution) ---
 def process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic="any"):
     metadata = []
-    # Calculate the min/max values for each feature dynamically
+    # Initialize dictionaries to store feature min/max values
     feature_ranges = {feature: [] for feature in thresholds}
     
+    # Step 1: Calculate feature min/max values dynamically
     for file in csv_files:
         df = pd.read_csv(file)
 
@@ -101,25 +102,27 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
         # Get the index of the selected signal column
         signal_column_index = df.columns.get_loc(signal_column_name)
         
-        # Extract features for each segment
-        all_features = []
         for feature_name in thresholds.keys():
             feature_values = []
+            # Segment the beads and extract the features dynamically
             for start, end in segment_beads(df, signal_column_index, 0.0):  # A basic threshold for segmentation
                 signal = df.iloc[start:end+1, signal_column_index].values
                 features = extract_features(signal)
                 feature_values.append(features[feature_name])
-            
-            # Store min/max values for each feature
+
+            # Update the min/max values for each feature
             feature_ranges[feature_name] = (min(feature_values), max(feature_values))
-        
-        # Now allow users to adjust thresholds using sliders based on real min/max
-        for feature_name, (min_val, max_val) in feature_ranges.items():
-            min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
-            max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
-            thresholds[feature_name] = (min_threshold, max_threshold)
-        
-        # Run the analysis after setting thresholds
+    
+    # Step 2: Set sliders based on the real min/max values for each feature
+    for feature_name, (min_val, max_val) in feature_ranges.items():
+        min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
+        max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
+        thresholds[feature_name] = (min_threshold, max_threshold)
+
+    # Step 3: Run the analysis with updated thresholds
+    for file in csv_files:
+        df = pd.read_csv(file)
+
         for feature_name, threshold in thresholds.items():
             segments = segment_beads(df, signal_column_index, threshold[0])
             for start, end in segments:
