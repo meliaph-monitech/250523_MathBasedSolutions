@@ -14,15 +14,12 @@ def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
     else:
         os.makedirs(extract_dir)
 
-    # Write the uploaded file to disk
     with open(os.path.join(extract_dir, uploaded_file.name), "wb") as f:
         f.write(uploaded_file.getbuffer())
 
-    # Extract the uploaded zip file
     with zipfile.ZipFile(os.path.join(extract_dir, uploaded_file.name), 'r') as zip_ref:
         zip_ref.extractall(extract_dir)
 
-    # Return the paths of the extracted CSV files
     return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
 
 
@@ -59,7 +56,7 @@ def extract_features(signal):
     return features
 
 
-# --- Threshold Evaluation Optimization ---
+# --- Threshold Evaluation ---
 def evaluate_rules(features, thresholds, logic_mode):
     violations = []
     for feature, bounds in thresholds.items():
@@ -75,7 +72,7 @@ def evaluate_rules(features, thresholds, logic_mode):
     return any(violations) if logic_mode == 'any' else all(violations)
 
 
-# --- Normalize Signal Efficiently ---
+# --- Normalize Signal ---
 def normalize_signal(signal, method="min-max"):
     if method == "min-max":
         return (signal - np.min(signal)) / (np.max(signal) - np.min(signal)) if np.max(signal) - np.min(signal) != 0 else signal
@@ -85,40 +82,31 @@ def normalize_signal(signal, method="min-max"):
         return signal
 
 
-# --- Main Function (Optimized for Faster Execution) ---
+# --- Process Welding Data ---
 def process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic="any"):
     metadata = []
     feature_ranges = {feature: [] for feature in thresholds}
     
-    # Step 1: Calculate feature min/max values dynamically
     for file in csv_files:
         df = pd.read_csv(file)
-
-        # Get the list of columns and allow the user to select the signal column
         columns = df.columns.tolist()
-        signal_column_name = st.selectbox("Select the signal column", columns)
-
-        # Get the index of the selected signal column
+        signal_column_name = st.session_state.filter_column
         signal_column_index = df.columns.get_loc(signal_column_name)
-        
+
         for feature_name in thresholds.keys():
             feature_values = []
-            # Segment the beads and extract the features dynamically
-            for start, end in segment_beads(df, signal_column_index, 0.0):  # A basic threshold for segmentation
+            for start, end in segment_beads(df, signal_column_index, 0.0):
                 signal = df.iloc[start:end+1, signal_column_index].values
                 features = extract_features(signal)
                 feature_values.append(features[feature_name])
 
-            # Update the min/max values for each feature
             feature_ranges[feature_name] = (min(feature_values), max(feature_values))
     
-    # Step 2: Set sliders based on the real min/max values for each feature
     for feature_name, (min_val, max_val) in feature_ranges.items():
         min_threshold = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
         max_threshold = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
         thresholds[feature_name] = (min_threshold, max_threshold)
 
-    # Step 3: Run the analysis with updated thresholds
     for file in csv_files:
         df = pd.read_csv(file)
 
@@ -138,7 +126,7 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
 # --- Visualization of Results ---
 def visualize_bead_signals(results_df, signal_column, csv_files):
     bead_numbers = sorted(results_df["bead_number"].unique())
-    selected_bead = st.selectbox("Select Bead Number", bead_numbers)  # User selects the bead
+    selected_bead = st.selectbox("Select Bead Number", bead_numbers)
     fig = go.Figure()
 
     for _, row in results_df[results_df["bead_number"] == selected_bead].iterrows():
@@ -159,34 +147,23 @@ with st.sidebar:
     uploaded_file = st.file_uploader("Upload ZIP with CSVs", type="zip")
     
     if uploaded_file:
-        # Extract the zip file and get the CSV files
         csv_files = extract_zip(uploaded_file)
+        st.session_state.csv_files = csv_files
         st.success(f"Extracted {len(csv_files)} CSV files")
 
-        # Store csv_files in session state
-        st.session_state.csv_files = csv_files
-
-        # Initialize and configure the UI
         df_sample = pd.read_csv(csv_files[0])
         columns = df_sample.columns.tolist()
         filter_column = st.selectbox("Select column for filtering", columns)
         threshold = st.number_input("LO threshold", value=0.0)
 
-        # Store the selected filter column and threshold in session state
         st.session_state.filter_column = filter_column
         st.session_state.threshold = threshold
 
-        rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated")
-
-        # Store the rule logic in session state
-        st.session_state.rule_logic = rule_logic
-
         if st.button("Segment Beads"):
-            # Retrieve session state values
-            thresholds = st.session_state.get("thresholds", {})
-
-            result_df = process_welding_data(csv_files, thresholds, normalization_method="min-max", rule_logic=rule_logic)
+            result_df = process_welding_data(csv_files, {}, normalization_method="min-max", rule_logic="any")
             st.dataframe(result_df)
 
-            # Visualize the results (Optional, add interaction for selecting bead number if needed)
             visualize_bead_signals(result_df, filter_column, csv_files)
+        
+        rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated")
+        st.session_state.rule_logic = rule_logic
