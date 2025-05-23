@@ -170,4 +170,4 @@ with st.sidebar:
         filter_column = st.selectbox("Select column for filtering", columns)
         threshold = st.number_input("LO threshold", value=0.0)
 
-        rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated
+        rule_logic = st.radio("Rule logic", ["any", "all"], format_func=lambda x: "Any rule violated = NOK" if x == "any" else "All rules must be violated")
