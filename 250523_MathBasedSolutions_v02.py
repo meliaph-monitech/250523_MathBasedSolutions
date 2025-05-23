@@ -4,10 +4,9 @@ import zipfile
 import os
 import plotly.graph_objects as go
 from scipy.stats import skew, kurtosis
-from collections import defaultdict
 import streamlit as st
 
-# --- Handle Streamlit file upload ---
+# --- Optimized File Extraction ---
 def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
     if os.path.exists(extract_dir):
         for file in os.listdir(extract_dir):
@@ -105,9 +104,9 @@ def process_welding_data(csv_files, thresholds, normalization_method="min-max", 
 
 
 # --- Visualization of Results ---
-def visualize_bead_signals(results_df, signal_column, thresholds, csv_files):
+def visualize_bead_signals(results_df, signal_column, csv_files):
     bead_numbers = sorted(results_df["bead_number"].unique())
-    selected_bead = bead_numbers[0]
+    selected_bead = st.selectbox("Select Bead Number", bead_numbers)  # User selects the bead
     fig = go.Figure()
 
     for _, row in results_df[results_df["bead_number"] == selected_bead].iterrows():
@@ -117,7 +116,7 @@ def visualize_bead_signals(results_df, signal_column, thresholds, csv_files):
         fig.add_trace(go.Scatter(y=signal, mode="lines", line=dict(color=color, width=1), name=f"{row['file']} ({row['status']})"))
 
     fig.update_layout(title=f"Bead #{selected_bead} Signal Comparison", xaxis_title="Index", yaxis_title=signal_column)
-    fig.show()
+    st.plotly_chart(fig, use_container_width=True)
 
 
 # --- Streamlit UI ---
@@ -143,7 +142,7 @@ with st.sidebar:
 
         # Define thresholds for each feature
         thresholds = {
-            'mean': (None, None),  # Example for no threshold, adjust as needed
+            'mean': (None, None),  # No threshold specified for simplicity
             'std': (None, None),
             'min': (None, None),
             'max': (None, None),
@@ -156,4 +155,4 @@ with st.sidebar:
             st.dataframe(result_df)
 
             # Visualize the results (Optional, add interaction for selecting bead number if needed)
-            visualize_bead_signals(result_df, signal_column, thresholds, csv_files)
+            visualize_bead_signals(result_df, signal_column, csv_files)
