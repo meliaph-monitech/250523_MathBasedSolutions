@@ -171,6 +171,7 @@ if "features_by_bead" in st.session_state:
     results_df = pd.DataFrame(results)
     st.dataframe(results_df)
 
+
 # --- Visualize the bead signals
 if "features_by_bead" in st.session_state:
     bead_numbers = sorted(set(entry["bead_number"] for entry in st.session_state["metadata"]))
@@ -188,14 +189,23 @@ if "features_by_bead" in st.session_state:
             df = pd.read_csv(file_name)
             signal = df.iloc[start_idx:end_idx + 1, 0].values
 
-            # Get bead classification from results
-            classification = results_df.loc[results_df["Bead Number"] == selected_bead, "Classification"].values[0]
-            color = 'red' if classification == "NOK" else 'black'
+            # Get classification for this specific file + bead combo
+            match = results_df[
+                (results_df["Bead Number"] == selected_bead) &
+                (results_df["File Name"] == os.path.basename(file_name))
+            ]
+
+            if not match.empty:
+                classification = match["Classification"].values[0]
+                color = 'red' if classification == "NOK" else 'black'
+            else:
+                classification = "Unknown"
+                color = 'gray'
 
             fig.add_trace(go.Scatter(
                 y=signal,
                 mode='lines',
-                name=f"File: {file_name}, Bead: {selected_bead}",
+                name=f"File: {os.path.basename(file_name)}, Bead: {selected_bead} ({classification})",
                 line=dict(color=color)
             ))
 
@@ -206,3 +216,4 @@ if "features_by_bead" in st.session_state:
             showlegend=True
         )
         st.plotly_chart(fig)
+
