@@ -169,8 +169,10 @@ if "features_by_bead" in st.session_state:
 
     # Show results in a table
     results_df = pd.DataFrame(results)
-    st.dataframe(results_df)
-
+    with st.expander("Show All Bead Classification Results"):
+        st.dataframe(results_df)
+    nok_results_df = results_df[results_df["Classification"] == "NOK"]
+    st.dataframe(nok_results_df)
 
 # --- Visualize the bead signals
 if "features_by_bead" in st.session_state:
