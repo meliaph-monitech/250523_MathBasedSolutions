@@ -148,17 +148,20 @@ if "features_by_bead" in st.session_state:
     # Bead classification based on thresholds
     results = []
     for bead_number, feature_list in st.session_state["features_by_bead"].items():
-        for features in feature_list:
+        metadata_entries = [entry for entry in st.session_state["metadata"] if entry["bead_number"] == bead_number]
+        for i, features in enumerate(feature_list):
             classification = "OK"
-            for i, feature_name in enumerate(feature_names):
-                if active_features.get(feature_name, False):  # Only check active features
+            for j, feature_name in enumerate(feature_names):
+                if active_features.get(feature_name, False):
                     min_val, max_val = thresholds[feature_name]
-                    feature_value = features[i]
-                    # Check if the feature is within the thresholds (value should be within min-max)
+                    feature_value = features[j]
                     if feature_value < min_val or feature_value > max_val:
                         classification = "NOK"
                         break
+    
+            file_name = metadata_entries[i]["file"] if i < len(metadata_entries) else "Unknown"
             results.append({
+                "File Name": os.path.basename(file_name),
                 "Bead Number": bead_number,
                 "Classification": classification,
                 "Features": features
