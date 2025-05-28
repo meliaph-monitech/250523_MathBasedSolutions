@@ -97,8 +97,8 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Threshold Configuration")
-    sensitivity = st.sidebar.slider("Drop Threshold (% below baseline)", 1, 50, 10)
-    min_drop_percent = st.sidebar.slider("Min % of dropped points to flag as NOK", 1, 100, 15)
+    sensitivity = st.sidebar.slider("Drop Threshold (% below baseline)", 0.1, 20.0, 10.0, 0.1)
+    min_drop_percent = st.sidebar.slider("Min % of dropped points to flag as NOK", 0.1, 20.0, 10.0, 0.1)
     selected_bead = st.sidebar.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
     threshold_mode = st.sidebar.selectbox(
         "Threshold method:",
