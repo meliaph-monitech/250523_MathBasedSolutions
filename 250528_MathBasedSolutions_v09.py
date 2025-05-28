@@ -48,18 +48,17 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 # --- Sharp Dip Detection ---
-def has_sharp_dip(signal, lower_line, min_length, min_depth_ratio):
-    below = signal < lower_line
+def has_sharp_dip(signal, baseline, min_length, min_drop_value):
+    dip = baseline - signal
     i = 0
-    while i < len(below):
-        if below[i]:
+    while i < len(dip):
+        if dip[i] > min_drop_value:
             start = i
-            while i < len(below) and below[i]:
+            while i < len(dip) and dip[i] > min_drop_value:
                 i += 1
             end = i
             run_length = end - start
-            dip_depth = (lower_line[start:end] - signal[start:end]).max()
-            if run_length >= min_length and dip_depth >= min_depth_ratio * lower_line[start:end].mean():
+            if run_length >= min_length:
                 return True
         else:
             i += 1
@@ -114,22 +113,18 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     st.dataframe(pd.DataFrame(st.session_state["bead_metadata"]))
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("### Threshold Configuration")
-    sensitivity = st.sidebar.slider("Drop Threshold (% below baseline)", 0.0, 20.0, 10.0, 0.1)
-    detection_mode = st.sidebar.selectbox("Detection Method", ["Drop Percentage", "Sharp Dip"])
-    if detection_mode == "Drop Percentage":
-        min_drop_percent = st.sidebar.slider("Min % of dropped points to flag as NOK", 1, 100, 15)
-    elif detection_mode == "Sharp Dip":
-        min_dip_length = st.sidebar.slider("Min consecutive points (dip length)", 1, 50, 5)
-        min_dip_depth = st.sidebar.slider("Min dip depth (% below threshold)", 1, 100, 20)
+    st.sidebar.markdown("### Detection Configuration")
+    detection_mode = st.sidebar.selectbox("Detection Method", ["Sharp Dip"])
+    min_dip_length = st.sidebar.slider("Min consecutive points (dip length)", 1, 50, 5)
+    min_dip_value = st.sidebar.slider("Min dip amount (absolute value)", 0.01, 5.0, 0.2, 0.01)
 
     selected_bead = st.sidebar.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
     threshold_mode = st.sidebar.selectbox(
-        "Threshold method:",
+        "Baseline method:",
         ["Global Median", "Global Mean", "Rolling Median", "Rolling Quantile (10%)", "Trimmed Mean (10%)"]
     )
     window_size = st.sidebar.slider("Rolling Window Size (for rolling methods)", 5, 100, 25)
-    exclude_outliers = st.sidebar.checkbox("Exclude extreme high values when calculating thresholds", value=True)
+    exclude_outliers = st.sidebar.checkbox("Exclude extreme high values when calculating baselines", value=True)
 
     signal_col = st.session_state["signal_column"]
     nok_files = set()
@@ -158,18 +153,10 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
         else:
             baseline = np.median(stacked_signals, axis=0)
 
-        lower_line = baseline * (1 - sensitivity / 100)
-
         for entry in entries:
             file = entry["file"]
             signal = entry["data"][:min_len]
-            if detection_mode == "Drop Percentage":
-                below_thresh = signal < lower_line
-                drop_percent = 100 * np.sum(below_thresh) / len(signal)
-                is_nok = drop_percent >= min_drop_percent
-            else:
-                is_nok = has_sharp_dip(signal, lower_line, min_dip_length, min_dip_depth / 100.0)
-
+            is_nok = has_sharp_dip(signal, baseline, min_dip_length, min_dip_value)
             if is_nok:
                 nok_files.add(file)
                 nok_beads_by_file[file].append(str(bead_num))
@@ -197,19 +184,11 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     else:
         baseline = np.median(stacked_signals, axis=0)
 
-    lower_line = baseline * (1 - sensitivity / 100)
-    upper_line = baseline * (1 + sensitivity / 100)
-
     summary = []
     for entry in st.session_state["bead_data"][selected_bead]:
         file = entry["file"]
         signal = entry["data"][:min_len]
-        if detection_mode == "Drop Percentage":
-            below_thresh = signal < lower_line
-            drop_percent = 100 * np.sum(below_thresh) / len(signal)
-            is_nok = drop_percent >= min_drop_percent
-        else:
-            is_nok = has_sharp_dip(signal, lower_line, min_dip_length, min_dip_depth / 100.0)
+        is_nok = has_sharp_dip(signal, baseline, min_dip_length, min_dip_value)
         color = 'red' if is_nok else 'black'
         fig.add_trace(go.Scatter(y=signal, mode='lines', name=file, line=dict(color=color)))
 
@@ -218,8 +197,7 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
             "NOK": is_nok
         })
 
-    fig.add_trace(go.Scatter(y=lower_line, mode='lines', name='Lower Threshold', line=dict(color='green', width=1, dash='dash')))
-    fig.add_trace(go.Scatter(y=upper_line, mode='lines', name='Upper Threshold', line=dict(color='green', width=1, dash='dash')))
+    fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline', line=dict(color='green', width=1, dash='dash')))
 
     st.markdown(f"### Signal Plot for Bead #{selected_bead}")
     st.plotly_chart(fig, use_container_width=True)
