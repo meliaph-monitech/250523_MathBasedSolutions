@@ -112,6 +112,37 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     nok_files = set()
     nok_beads_by_file = defaultdict(list)
 
+    for bead_num, entries in st.session_state["bead_data"].items():
+        all_signals = [entry["data"] for entry in entries]
+        min_len = min(len(sig) for sig in all_signals)
+        all_signals_trimmed = [sig[:min_len] for sig in all_signals]
+        stacked_signals = np.vstack(all_signals_trimmed)
+
+        if threshold_mode == "Global Median":
+            baseline = np.median(stacked_signals, axis=0)
+        elif threshold_mode == "Global Mean":
+            baseline = np.mean(stacked_signals, axis=0)
+        elif threshold_mode == "Rolling Median":
+            baseline = pd.DataFrame(stacked_signals).median(axis=0).rolling(window_size, min_periods=1, center=True).median().to_numpy()
+        elif threshold_mode == "Rolling Quantile (10%)":
+            baseline = pd.DataFrame(stacked_signals).quantile(0.10, axis=0).rolling(window_size, min_periods=1, center=True).mean().to_numpy()
+        elif threshold_mode == "Trimmed Mean (10%)":
+            baseline = trim_mean(stacked_signals, proportiontocut=0.1, axis=0)
+        else:
+            baseline = np.median(stacked_signals, axis=0)
+
+        lower_line = baseline * (1 - sensitivity / 100)
+
+        for entry in entries:
+            file = entry["file"]
+            signal = entry["data"][:min_len]
+            below_thresh = signal < lower_line
+            drop_percent = 100 * np.sum(below_thresh) / len(signal)
+            is_nok = drop_percent >= min_drop_percent
+            if is_nok:
+                nok_files.add(file)
+                nok_beads_by_file[file].append(str(bead_num))
+
     all_signals = [entry["data"] for entry in st.session_state["bead_data"][selected_bead]]
     min_len = min(len(sig) for sig in all_signals)
     all_signals_trimmed = [sig[:min_len] for sig in all_signals]
@@ -132,17 +163,6 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
 
     lower_line = baseline * (1 - sensitivity / 100)
     upper_line = baseline * (1 + sensitivity / 100)
-
-    for bead_num, entries in st.session_state["bead_data"].items():
-        for entry in entries:
-            file = entry["file"]
-            signal = entry["data"][:min_len]
-            below_thresh = signal < lower_line
-            drop_percent = 100 * np.sum(below_thresh) / len(signal)
-            is_nok = drop_percent >= min_drop_percent
-            if is_nok:
-                nok_files.add(file)
-                nok_beads_by_file[file].append(str(bead_num))
 
     for entry in st.session_state["bead_data"][selected_bead]:
         file = entry["file"]
