@@ -171,7 +171,7 @@ for bead_num, entries in test_beads.items():
 
 final_summary = pd.DataFrame({
     "File Name": all_files,
-    "NOK Beads": [", ".join(map(str, sorted(nok_beads_per_file.get(fname, []))) ) for fname in all_files],
-    "Welding Result": ["NOK" if fname in nok_beads_per_file else "OK" for fname in all_files]
+    "NOK Beads": [", ".join(map(str, sorted(nok_files[fname]))) if fname in nok_files else "" for fname in all_files],
+    "Welding Result": ["NOK" if fname in nok_files else "OK" for fname in all_files]
 })
 st.dataframe(final_summary)
