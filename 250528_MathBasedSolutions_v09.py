@@ -47,25 +47,23 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-# --- Advanced Dip Segment Detection ---
-def has_nok_dip_segment(signal, baseline, drop_threshold, min_duration, max_duration):
-    signal = np.array(signal)
-    baseline = np.array(baseline)
-    diff = baseline - signal
-    for i in range(len(signal) - max_duration):
-        entry_drop = signal[i] - signal[i + 10] if i + 10 < len(signal) else 0
-        if entry_drop > drop_threshold:
-            for dur in range(min_duration, max_duration + 1):
-                if i + dur >= len(signal):
-                    break
-                segment = signal[i:i + dur]
-                seg_baseline = baseline[i:i + dur]
-                segment_diff = seg_baseline - segment
-                if np.all(segment_diff > drop_threshold * 0.5):
-                    recovery = signal[i + dur - 1] - segment.mean()
-                    if recovery > drop_threshold * 0.5:
-                        return True
-    return False
+# --- Abnormal Dip Detection ---
+def detect_valley_dip(signal, baseline, drop_threshold, min_duration):
+    in_dip = False
+    dip_start = 0
+    dips = []
+    for i in range(len(signal)):
+        if not in_dip and signal[i] < baseline[i] - drop_threshold:
+            in_dip = True
+            dip_start = i
+        elif in_dip and signal[i] >= baseline[i] - drop_threshold:
+            dip_end = i
+            if dip_end - dip_start >= min_duration:
+                dips.append((dip_start, dip_end))
+            in_dip = False
+    if in_dip and len(signal) - dip_start >= min_duration:
+        dips.append((dip_start, len(signal)))
+    return dips
 
 # --- App Layout ---
 st.set_page_config(page_title="Laser Welding Inspection", layout="wide")
@@ -117,18 +115,16 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Detection Configuration")
-    drop_threshold = st.sidebar.slider("Min sudden drop amount", 0.01, 5.0, 0.3, 0.01)
-    min_dip_duration = st.sidebar.slider("Min dip duration", 10, 300, 50)
-    max_dip_duration = st.sidebar.slider("Max dip duration", 50, 500, 200)
-
+    drop_threshold = st.sidebar.slider("Drop Threshold (absolute units)", 0.01, 5.0, 0.3, 0.01)
+    min_duration = st.sidebar.slider("Min duration of dip (points)", 10, 500, 50, 5)
     selected_bead = st.sidebar.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
     threshold_mode = st.sidebar.selectbox(
         "Baseline method:",
         ["Global Median", "Global Mean", "Rolling Median", "Rolling Quantile (10%)", "Trimmed Mean (10%)"]
     )
-    window_size = st.sidebar.slider("Rolling Window Size (for rolling methods)", 5, 100, 25)
-    exclude_outliers = st.sidebar.checkbox("Exclude extreme high values when calculating baselines", value=True)
+    window_size = st.sidebar.slider("Rolling Window Size (for rolling methods)", 1, 100, 25, 1)
 
+    fig = go.Figure()
     signal_col = st.session_state["signal_column"]
     nok_files = set()
     nok_beads_by_file = defaultdict(list)
@@ -138,10 +134,6 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
         min_len = min(len(sig) for sig in all_signals)
         all_signals_trimmed = [sig[:min_len] for sig in all_signals]
         stacked_signals = np.vstack(all_signals_trimmed)
-
-        if exclude_outliers:
-            p95 = np.percentile(stacked_signals, 95, axis=0)
-            stacked_signals = np.minimum(stacked_signals, p95)
 
         if threshold_mode == "Global Median":
             baseline = np.median(stacked_signals, axis=0)
@@ -159,20 +151,16 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
         for entry in entries:
             file = entry["file"]
             signal = entry["data"][:min_len]
-            is_nok = has_nok_dip_segment(signal, baseline, drop_threshold, min_dip_duration, max_dip_duration)
-            if is_nok:
+            dips = detect_valley_dip(signal, baseline, drop_threshold, min_duration)
+            if dips:
                 nok_files.add(file)
                 nok_beads_by_file[file].append(str(bead_num))
 
-    fig = go.Figure()
+    # Plot selected bead
     all_signals = [entry["data"] for entry in st.session_state["bead_data"][selected_bead]]
     min_len = min(len(sig) for sig in all_signals)
     all_signals_trimmed = [sig[:min_len] for sig in all_signals]
     stacked_signals = np.vstack(all_signals_trimmed)
-
-    if exclude_outliers:
-        p95 = np.percentile(stacked_signals, 95, axis=0)
-        stacked_signals = np.minimum(stacked_signals, p95)
 
     if threshold_mode == "Global Median":
         baseline = np.median(stacked_signals, axis=0)
@@ -187,18 +175,18 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     else:
         baseline = np.median(stacked_signals, axis=0)
 
-    summary = []
     for entry in st.session_state["bead_data"][selected_bead]:
         file = entry["file"]
         signal = entry["data"][:min_len]
-        is_nok = has_nok_dip_segment(signal, baseline, drop_threshold, min_dip_duration, max_dip_duration)
-        color = 'red' if is_nok else 'black'
+        dips = detect_valley_dip(signal, baseline, drop_threshold, min_duration)
+        color = 'red' if dips else 'black'
+
         fig.add_trace(go.Scatter(y=signal, mode='lines', name=file, line=dict(color=color)))
 
-        summary.append({
-            "File Name": file,
-            "NOK": is_nok
-        })
+        for start, end in dips:
+            fig.add_shape(type="rect",
+                          x0=start, x1=end, y0=min(signal), y1=max(signal),
+                          line=dict(width=0), fillcolor="rgba(255,0,0,0.2)")
 
     fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline', line=dict(color='green', width=1, dash='dash')))
 
