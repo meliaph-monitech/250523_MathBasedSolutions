@@ -162,9 +162,12 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
     st.dataframe(pd.DataFrame(drop_summary))
 
     st.markdown("### Final Welding Result Summary")
-    final_summary = pd.DataFrame({
-        "File Name": sorted(set(f for f, _ in test_beads[selected_bead])),
-        "NOK Beads": [", ".join(map(str, nok_files[f])) if f in nok_files else "" for f in sorted(set(f for f, _ in test_beads[selected_bead]))],
-        "Welding Result": ["NOK" if f in nok_files else "OK" for f in sorted(set(f for f, _ in test_beads[selected_bead]))]
-    })
+    all_files = sorted({fname for bead_entries in test_beads.values() for fname, _ in bead_entries})
+final_summary = pd.DataFrame({
+    "File Name": all_files,
+    "NOK Beads": [", ".join(str(bead) for bead in sorted(
+        [b for b in test_beads if fname in [f for f, _ in test_beads[b]] and fname in nok_files and b in nok_files[fname]])
+    ) if fname in nok_files else "" for fname in all_files],
+    "Welding Result": ["NOK" if fname in nok_files else "OK" for fname in all_files]
+})
     st.dataframe(final_summary)
