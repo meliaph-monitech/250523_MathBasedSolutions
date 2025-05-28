@@ -141,19 +141,29 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
         fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
 
     drop_summary = []
-    nok_files = defaultdict(list)
+nok_files = defaultdict(list)
 
-    for fname, sig in test_beads.get(selected_bead, []):
+# Run dip detection across all bead numbers
+for bead_num, signals in test_beads.items():
+    ok_signals = [sig[:min(len(s) for _, s in ok_beads[bead_num])] for _, sig in ok_beads.get(bead_num, []) if bead_num in ok_beads]
+    if not ok_signals:
+        continue
+    ok_matrix = np.vstack(ok_signals)
+    baseline = np.median(ok_matrix, axis=0)
+    lower_line = baseline * (1 - drop_margin / 100)
+
+    for fname, sig in signals:
         min_len = min(len(sig), len(lower_line))
         sig = sig[:min_len]
         lower = lower_line[:min_len]
         below = sig < lower
         percent_below = 100 * np.sum(below) / len(sig)
-        color = 'red' if percent_below >= min_drop_percent else 'black'
-        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
-        drop_summary.append({"File": fname, "Bead": selected_bead, "% Below": round(percent_below, 2), "NOK": percent_below >= min_drop_percent})
         if percent_below >= min_drop_percent:
-            nok_files[fname].append(selected_bead)
+            nok_files[fname].append(bead_num)
+        if bead_num == selected_bead:
+            color = 'red' if percent_below >= min_drop_percent else 'black'
+            fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
+            drop_summary.append({"File": fname, "Bead": bead_num, "% Below": round(percent_below, 2), "NOK": percent_below >= min_drop_percent})
 
     fig.add_trace(go.Scatter(y=lower_line, mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
     st.plotly_chart(fig, use_container_width=True)
