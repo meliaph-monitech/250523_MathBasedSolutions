@@ -67,7 +67,7 @@ def mean_pairwise_correlation(matrix):
 
 # --- Streamlit App ---
 st.set_page_config(page_title="Welding Anomaly Viewer", layout="wide")
-st.title("Laser Welding Behavioral Anomaly Detection V11")
+st.title("Laser Welding Behavioral V11")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -107,9 +107,11 @@ with st.sidebar:
             st.session_state["signal_column"] = signal_column
             st.success("Bead segmentation completed.")
 
+# --- Visualization & Summary ---
 if "bead_data" in st.session_state:
-    st.markdown("### Bead Segmentation Summary")
-    st.dataframe(pd.DataFrame(st.session_state["bead_metadata"]))
+    if "bead_metadata" in st.session_state:
+        st.markdown("### Bead Segmentation Summary")
+        st.dataframe(pd.DataFrame(st.session_state["bead_metadata"]))
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Detection Settings")
@@ -153,6 +155,7 @@ if "bead_data" in st.session_state:
             fig.update_layout(title=f"Bead #{selected_bead} Signal Overlay", xaxis_title="Index", yaxis_title="Signal")
             st.plotly_chart(fig, use_container_width=True)
 
+    # Final Welding Result Summary
     st.markdown("### Final Welding Result Summary")
     all_files = sorted(set(m["file"] for m in st.session_state["bead_metadata"]))
     summary_data = []
