@@ -67,7 +67,7 @@ def detect_valley_dip(signal, baseline, drop_threshold, min_duration):
 
 # --- App Layout ---
 st.set_page_config(page_title="Laser Welding Inspection", layout="wide")
-st.title("Laser Welding Signal Analysis")
+st.title("Laser Welding Signal Analysis V09")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
