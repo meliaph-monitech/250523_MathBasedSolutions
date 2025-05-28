@@ -82,17 +82,54 @@ if st.sidebar.button("Segment Beads"):
         ok_beads = process_files(ok_files)
         test_beads = process_files(test_files)
 
+        st.markdown("### Bead Segmentation Complete. Now review bead length heatmaps below.")
+
+        # --- Heatmaps of Bead Lengths ---
+        import matplotlib.pyplot as plt
+        import seaborn as sns
+
+        def generate_heatmap(bead_data, title):
+            bead_lengths = defaultdict(lambda: defaultdict(int))
+            bead_nums = set()
+            file_names = set()
+
+            for bead_num, entries in bead_data.items():
+                for fname, sig in entries:
+                    bead_lengths[fname][bead_num] = len(sig)
+                    bead_nums.add(bead_num)
+                    file_names.add(fname)
+
+            bead_nums = sorted(bead_nums)
+            file_names = sorted(file_names)
+            heatmap_data = np.zeros((len(file_names), len(bead_nums)))
+
+            for i, fname in enumerate(file_names):
+                for j, bead in enumerate(bead_nums):
+                    heatmap_data[i, j] = bead_lengths[fname].get(bead, 0)
+
+            df_hm = pd.DataFrame(heatmap_data, index=file_names, columns=bead_nums)
+            fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.4)))
+            sns.heatmap(df_hm, annot=False, cmap="YlGnBu", ax=ax, cbar=True)
+            ax.set_title(title)
+            ax.set_xlabel("Bead Number")
+            ax.set_ylabel("File Name")
+            st.pyplot(fig)
+
+        col1, col2 = st.columns(2)
+        with col1:
+            generate_heatmap(ok_beads, "Bead Lengths in OK ZIP")
+        with col2:
+            generate_heatmap(test_beads, "Bead Lengths in Test ZIP")
+
+        drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
+        min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
+
         selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
 
         # Build baseline from OK data
         ok_signals = [sig[:min(len(s) for _, s in ok_beads[selected_bead])] for _, sig in ok_beads[selected_bead]]
         ok_matrix = np.vstack(ok_signals)
         baseline = np.median(ok_matrix, axis=0)
-
-        if drop_margin is None or min_drop_percent is None:
-            st.warning("Set drop margin and minimum drop percentage to continue.")
-            st.stop()
-
         lower_line = baseline * (1 - drop_margin / 100)
 
         # Plot
