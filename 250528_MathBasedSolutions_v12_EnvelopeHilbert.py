@@ -50,7 +50,7 @@ def segment_beads(df, column, threshold):
 
 # --- Streamlit App Setup ---
 st.set_page_config(page_title="Signal Behavior Viewer", layout="wide")
-st.title("Signal Behavior Exploration: RMS Energy Heatmap")
+st.title("Signal Behavior Exploration (No Statistical Thresholds)")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -122,3 +122,24 @@ if "bead_data" in st.session_state:
         yaxis_title="CSV File"
     )
     st.plotly_chart(fig, use_container_width=True)
+
+# --- Envelope Plot Viewer ---
+st.markdown("### Signal Envelope Viewer")
+selected_bead_env = st.selectbox("Select Bead Number for Envelope Plot", sorted(st.session_state["bead_data"].keys()), key="envelope")
+
+signals_env = st.session_state["bead_data"][selected_bead_env]
+min_len_env = min(len(sig) for _, sig in signals_env)
+
+fig_env = go.Figure()
+for fname, sig in signals_env:
+    sig = sig[:min_len_env]
+    envelope = np.abs(hilbert(sig))
+    fig_env.add_trace(go.Scatter(y=envelope, mode='lines', name=fname, line=dict(width=1)))
+
+fig_env.update_layout(
+    title=f"Envelope Plot - Bead #{selected_bead_env}",
+    xaxis_title="Time Index",
+    yaxis_title="Envelope Amplitude",
+    showlegend=True
+)
+st.plotly_chart(fig_env, use_container_width=True)
