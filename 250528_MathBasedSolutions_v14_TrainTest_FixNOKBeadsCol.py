@@ -158,9 +158,9 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
     for fname, sig in test_beads.get(selected_bead, []):
     # Ensure correct indentation and color logic
         min_len = min(len(sig), len(lower_line))
-    sig = sig[:min_len]
-    color = 'red' if fname in nok_files and selected_bead in nok_files[fname] else 'black'
-    fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
+        sig = sig[:min_len]
+        color = 'red' if fname in nok_files and selected_bead in nok_files[fname] else 'black'
+        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=0.5), name=f"Test: {fname}"))
 
     fig.add_trace(go.Scatter(y=lower_line[:min_len], mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
     st.plotly_chart(fig, use_container_width=True)
