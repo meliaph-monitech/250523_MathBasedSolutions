@@ -60,70 +60,80 @@ if ok_zip and test_zip:
         
     drop_margin = None
 min_drop_percent = None
+segmented = False
 if st.sidebar.button("Segment Beads"):
-        with open("ok.zip", "wb") as f:
-            f.write(ok_zip.getbuffer())
-        with open("test.zip", "wb") as f:
-            f.write(test_zip.getbuffer())
+    with open("ok.zip", "wb") as f:
+        f.write(ok_zip.getbuffer())
+    with open("test.zip", "wb") as f:
+        f.write(test_zip.getbuffer())
 
-        ok_files = extract_zip("ok.zip", "ok_data")
-        test_files = extract_zip("test.zip", "test_data")
+    ok_files = extract_zip("ok.zip", "ok_data")
+    test_files = extract_zip("test.zip", "test_data")
 
-        def process_files(files):
-            bead_data = defaultdict(list)
-            for file in files:
-                df = pd.read_csv(file)
-                segments = segment_beads(df, filter_column, threshold)
-                for bead_num, (start, end) in enumerate(segments, start=1):
-                    signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
-                    bead_data[bead_num].append((os.path.basename(file), signal))
-            return bead_data
+    def process_files(files):
+        bead_data = defaultdict(list)
+        for file in files:
+            df = pd.read_csv(file)
+            segments = segment_beads(df, filter_column, threshold)
+            for bead_num, (start, end) in enumerate(segments, start=1):
+                signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
+                bead_data[bead_num].append((os.path.basename(file), signal))
+        return bead_data
 
-        ok_beads = process_files(ok_files)
-        test_beads = process_files(test_files)
+    ok_beads = process_files(ok_files)
+    test_beads = process_files(test_files)
+    st.session_state["ok_beads"] = ok_beads
+    st.session_state["test_beads"] = test_beads
+    segmented = True
+    st.success("✅ Bead segmentation completed.")
 
-        st.markdown("### Bead Segmentation Complete. Now review bead length heatmaps below.")
+    # --- Heatmaps of Bead Lengths ---
+    import matplotlib.pyplot as plt
+    import seaborn as sns
 
-        # --- Heatmaps of Bead Lengths ---
-        import matplotlib.pyplot as plt
-        import seaborn as sns
+    def generate_heatmap(bead_data, title):
+        bead_lengths = defaultdict(lambda: defaultdict(int))
+        bead_nums = set()
+        file_names = set()
 
-        def generate_heatmap(bead_data, title):
-            bead_lengths = defaultdict(lambda: defaultdict(int))
-            bead_nums = set()
-            file_names = set()
+        for bead_num, entries in bead_data.items():
+            for fname, sig in entries:
+                bead_lengths[fname][bead_num] = len(sig)
+                bead_nums.add(bead_num)
+                file_names.add(fname)
 
-            for bead_num, entries in bead_data.items():
-                for fname, sig in entries:
-                    bead_lengths[fname][bead_num] = len(sig)
-                    bead_nums.add(bead_num)
-                    file_names.add(fname)
+        bead_nums = sorted(bead_nums)
+        file_names = sorted(file_names)
+        heatmap_data = np.zeros((len(file_names), len(bead_nums)))
 
-            bead_nums = sorted(bead_nums)
-            file_names = sorted(file_names)
-            heatmap_data = np.zeros((len(file_names), len(bead_nums)))
+        for i, fname in enumerate(file_names):
+            for j, bead in enumerate(bead_nums):
+                heatmap_data[i, j] = bead_lengths[fname].get(bead, 0)
 
-            for i, fname in enumerate(file_names):
-                for j, bead in enumerate(bead_nums):
-                    heatmap_data[i, j] = bead_lengths[fname].get(bead, 0)
+        df_hm = pd.DataFrame(heatmap_data, index=file_names, columns=bead_nums)
+        fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.4)))
+        sns.heatmap(df_hm, annot=False, cmap="YlGnBu", ax=ax, cbar=True)
+        ax.set_title(title)
+        ax.set_xlabel("Bead Number")
+        ax.set_ylabel("File Name")
+        st.pyplot(fig)
 
-            df_hm = pd.DataFrame(heatmap_data, index=file_names, columns=bead_nums)
-            fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.4)))
-            sns.heatmap(df_hm, annot=False, cmap="YlGnBu", ax=ax, cbar=True)
-            ax.set_title(title)
-            ax.set_xlabel("Bead Number")
-            ax.set_ylabel("File Name")
-            st.pyplot(fig)
+    st.markdown("### Bead Length Heatmaps")
+    col1, col2 = st.columns(2)
+    with col1:
+        generate_heatmap(ok_beads, "Bead Lengths in OK ZIP")
+    with col2:
+        generate_heatmap(test_beads, "Bead Lengths in Test ZIP")
 
-        col1, col2 = st.columns(2)
-        with col1:
-            generate_heatmap(ok_beads, "Bead Lengths in OK ZIP")
-        with col2:
-            generate_heatmap(test_beads, "Bead Lengths in Test ZIP")
+if "ok_beads" in st.session_state and "test_beads" in st.session_state:
+    ok_beads = st.session_state["ok_beads"]
+    test_beads = st.session_state["test_beads"]
 
-        drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
-        min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
+    drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
+    min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
 
+    st.markdown("### Dip Detection")
+    selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
         selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
 
         # Build baseline from OK data
