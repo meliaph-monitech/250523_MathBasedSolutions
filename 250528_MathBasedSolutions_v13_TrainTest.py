@@ -49,7 +49,12 @@ ok_zip = st.sidebar.file_uploader("ZIP file with ONLY OK welds", type="zip", key
 st.sidebar.header("Upload Test Data")
 test_zip = st.sidebar.file_uploader("ZIP file to Test", type="zip", key="test")
 
-sample_file = pd.read_csv(ok_zip) if ok_zip else None
+sample_file = None
+if ok_zip:
+    with zipfile.ZipFile(ok_zip, 'r') as zip_ref:
+        sample_csv_name = [name for name in zip_ref.namelist() if name.endswith('.csv')][0]
+        with zip_ref.open(sample_csv_name) as sample_file_raw:
+            sample_file = pd.read_csv(sample_file_raw)
 if sample_file is not None:
     all_columns = sample_file.columns.tolist()
 else:
@@ -75,8 +80,6 @@ if ok_zip and test_zip and filter_column and signal_column:
         bead_data = defaultdict(list)
         for file in csv_files:
             df = pd.read_csv(file)
-            if filter_column not in df.columns or signal_column not in df.columns:
-                continue
             segments = segment_beads(df, filter_column, threshold)
             for bead_num, (start, end) in enumerate(segments, start=1):
                 sig = df.iloc[start:end+1][signal_column].reset_index(drop=True)
