@@ -104,7 +104,7 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
         "Threshold method:",
         ["Global Median", "Global Mean", "Rolling Median", "Rolling Quantile (10%)", "Trimmed Mean (10%)"]
     )
-    window_size = st.sidebar.slider("Rolling Window Size (for rolling methods)", 5, 100, 25)
+    window_size = st.sidebar.slider("Rolling Window Size (for rolling methods)", 1, 100, 25, 1)
 
     fig = go.Figure()
     signal_col = st.session_state["signal_column"]
