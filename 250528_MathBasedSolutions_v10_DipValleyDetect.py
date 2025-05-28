@@ -100,6 +100,7 @@ with st.sidebar:
 if "bead_data" in st.session_state:
     drop_threshold = st.sidebar.slider("Drop Threshold (absolute units)", 0.01, 5.0, 0.3, 0.01)
     min_duration = st.sidebar.slider("Min duration of dip (points)", 10, 500, 50, 5)
+    window_size = st.sidebar.slider("Rolling window size for baseline", 3, 101, 25, 2)
 
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
 
@@ -110,7 +111,7 @@ if "bead_data" in st.session_state:
         min_len = min(len(sig) for _, sig in signals if hasattr(sig, '__len__'))
         for file_name, signal in signals:
             signal = signal[:min_len]
-            baseline = np.median(signal) * np.ones_like(signal)
+            baseline = pd.Series(signal).rolling(window=window_size, center=True, min_periods=1).median().to_numpy()
             mask = detect_valley_mask(signal, baseline, drop_threshold, min_duration)
 
             normal_y = np.where(mask, np.nan, signal)
