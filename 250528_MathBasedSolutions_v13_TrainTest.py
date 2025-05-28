@@ -40,107 +40,89 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 # --- App Setup ---
-st.session_state.setdefault("segmented", False)
 st.set_page_config(layout="wide")
 st.title("Dip Valley Detector Using OK Reference")
 
-st.sidebar.header("Upload OK Reference Data")
-ok_zip = st.sidebar.file_uploader("ZIP file with ONLY OK welds", type="zip", key="ok")
+st.sidebar.header("Upload Data")
+ok_zip = st.sidebar.file_uploader("ZIP file with ONLY OK welds", type="zip")
+test_zip = st.sidebar.file_uploader("ZIP file to Test", type="zip")
 
-st.sidebar.header("Upload Test Data")
-test_zip = st.sidebar.file_uploader("ZIP file to Test", type="zip", key="test")
-
-sample_file = None
-if ok_zip:
+if ok_zip and test_zip:
     with zipfile.ZipFile(ok_zip, 'r') as zip_ref:
         sample_csv_name = [name for name in zip_ref.namelist() if name.endswith('.csv')][0]
         with zip_ref.open(sample_csv_name) as sample_file_raw:
             sample_file = pd.read_csv(sample_file_raw)
-if sample_file is not None:
-    all_columns = sample_file.columns.tolist()
-else:
-    all_columns = []
+    columns = sample_file.columns.tolist()
 
-filter_column = st.sidebar.selectbox("Select column for segmentation", all_columns) if all_columns else None
-threshold = st.sidebar.number_input("Threshold for filtering", value=0.0)
-signal_column = st.sidebar.selectbox("Select signal column for analysis", all_columns) if all_columns else None
-drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
-min_duration = st.sidebar.slider("Min Dip Duration (points)", 5, 500, 50, 5)
-window_size = st.sidebar.slider("Rolling Window Size", 5, 200, 50, 5)
+    filter_column = st.sidebar.selectbox("Select column for segmentation", columns)
+    threshold = st.sidebar.number_input("Segmentation threshold", value=0.0)
+    signal_column = st.sidebar.selectbox("Select signal column for analysis", columns)
+    drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
+    min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
 
-if st.button("Segment Beads") and ok_zip and test_zip and filter_column and signal_column:
-    with open("ok.zip", "wb") as f:
-        f.write(ok_zip.getbuffer())
-    with open("test.zip", "wb") as f:
-        f.write(test_zip.getbuffer())
+    if st.sidebar.button("Segment Beads"):
+        with open("ok.zip", "wb") as f:
+            f.write(ok_zip.getbuffer())
+        with open("test.zip", "wb") as f:
+            f.write(test_zip.getbuffer())
 
-    ok_files = extract_zip("ok.zip", "ok_data")
-    test_files = extract_zip("test.zip", "test_data")
+        ok_files = extract_zip("ok.zip", "ok_data")
+        test_files = extract_zip("test.zip", "test_data")
 
-    def process_csvs(csv_files):
-        bead_data = defaultdict(list)
-        for file in csv_files:
-            df = pd.read_csv(file)
-            segments = segment_beads(df, filter_column, threshold)
-            for bead_num, (start, end) in enumerate(segments, start=1):
-                sig = df.iloc[start:end+1][signal_column].reset_index(drop=True)
-                bead_data[bead_num].append((os.path.basename(file), sig))
-        return bead_data
+        def process_files(files):
+            bead_data = defaultdict(list)
+            for file in files:
+                df = pd.read_csv(file)
+                segments = segment_beads(df, filter_column, threshold)
+                for bead_num, (start, end) in enumerate(segments, start=1):
+                    signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
+                    bead_data[bead_num].append((os.path.basename(file), signal))
+            return bead_data
 
-        ok_beads = process_csvs(ok_files)
-    test_beads = process_csvs(test_files)
-    st.session_state["ok_beads"] = ok_beads
-    st.session_state["test_beads"] = test_beads
-    st.session_state["segmented"] = True
+        ok_beads = process_files(ok_files)
+        test_beads = process_files(test_files)
 
-    results = []
+        selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
 
-    if st.session_state.get("segmented"):
-    ok_beads = st.session_state["ok_beads"]
-    test_beads = st.session_state["test_beads"]
+        # Build baseline from OK data
+        ok_signals = [sig[:min(len(s) for _, s in ok_beads[selected_bead])] for _, sig in ok_beads[selected_bead]]
+        ok_matrix = np.vstack(ok_signals)
+        baseline = np.median(ok_matrix, axis=0)
+        lower_line = baseline * (1 - drop_margin / 100)
 
-    for bead_num in sorted(test_beads.keys()):
-        if bead_num not in ok_beads:
-            continue
+        # Plot
+        fig = go.Figure()
 
-        ok_signals = [sig[:min(len(sig) for _, sig in ok_beads[bead_num])] for _, sig in ok_beads[bead_num]]
-        ok_maxes = [np.max(sig) for sig in ok_signals]
-        threshold_max = np.percentile(ok_maxes, 95)
+        # OK signals (gray)
+        for fname, sig in ok_beads[selected_bead]:
+            sig = sig[:len(lower_line)]
+            fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
 
-        # Remove high mountains
-        clean_signals = [sig for sig, maxval in zip(ok_signals, ok_maxes) if maxval <= threshold_max]
-        ok_matrix = np.vstack(clean_signals)
+        # Test signals
+        drop_summary = []
+        nok_files = defaultdict(list)
 
-        # Create baseline from trimmed mean
-        baseline = np.apply_along_axis(lambda x: trim_mean(x, 0.1), axis=0, arr=ok_matrix)
+        for fname, sig in test_beads.get(selected_bead, []):
+            sig = sig[:len(lower_line)]
+            below = sig < lower_line
+            percent_below = 100 * np.sum(below) / len(sig)
+            color = 'red' if percent_below >= min_drop_percent else 'black'
+            fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
+            drop_summary.append({"File": fname, "Bead": selected_bead, "% Below": round(percent_below, 2), "NOK": percent_below >= min_drop_percent})
+            if percent_below >= min_drop_percent:
+                nok_files[fname].append(selected_bead)
 
-        for fname, sig in test_beads[bead_num]:
-            sig = sig[:len(baseline)]
-            dip_mask = (sig < baseline * (1 - drop_margin / 100)).astype(int)
+        fig.add_trace(go.Scatter(y=lower_line, mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
 
-            dip_count = 0
-            current = 0
-            for val in dip_mask:
-                if val:
-                    current += 1
-                    if current >= min_duration:
-                        dip_count += 1
-                        break
-                else:
-                    current = 0
+        st.plotly_chart(fig, use_container_width=True)
 
-            result = {
-                "File": fname,
-                "Bead": bead_num,
-                "Dip Detected": dip_count > 0
-            }
-            results.append(result)
+        st.markdown("### Drop Summary Table")
+        st.dataframe(pd.DataFrame(drop_summary))
 
-    results_df = pd.DataFrame(results)
-    st.markdown("### Dip Detection Results")
-    st.dataframe(results_df)
-
-    summary = results_df.groupby("File")["Dip Detected"].any().reset_index()
-    summary["Welding Result"] = summary["Dip Detected"].apply(lambda x: "NOK" if x else "OK")
-    st.markdown("### Final File Classification")
-    st.dataframe(summary)
+        st.markdown("### Final Welding Result Summary")
+        final_summary = pd.DataFrame({
+            "File Name": sorted(set(f for f, _ in test_beads[selected_bead])),
+            "NOK Beads": [", ".join(map(str, nok_files[f])) if f in nok_files else "" for f in sorted(set(f for f, _ in test_beads[selected_bead]))],
+            "Welding Result": ["NOK" if f in nok_files else "OK" for f in sorted(set(f for f, _ in test_beads[selected_bead]))]
+        })
+        st.dataframe(final_summary)
