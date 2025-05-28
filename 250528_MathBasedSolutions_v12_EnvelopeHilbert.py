@@ -128,6 +128,8 @@ st.markdown("### Signal Envelope Viewer")
 if "bead_data" in st.session_state:
     selected_bead_env = st.selectbox("Select Bead Number for Envelope Plot", sorted(st.session_state["bead_data"].keys()), key="envelope")
 
+    signals_env = st.session_state["bead_data"].get(selected_bead_env, [])
+
 signals_env = st.session_state.get("bead_data", {}).get(selected_bead_env, [])
 min_len_env = min(len(sig) for _, sig in signals_env)
 
