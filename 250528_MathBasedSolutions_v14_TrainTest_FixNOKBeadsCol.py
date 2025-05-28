@@ -20,8 +20,7 @@ def extract_zip(uploaded_file, extract_dir):
     with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
         zip_ref.extractall(extract_dir)
 
-    csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
-    return [os.path.join(extract_dir, f) for f in csv_files]
+    return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
 
 # --- Bead Segmentation ---
 def segment_beads(df, column, threshold):
@@ -89,21 +88,17 @@ if ok_zip and test_zip:
             bead_lengths = defaultdict(lambda: defaultdict(int))
             bead_nums = set()
             file_names = set()
-
             for bead_num, entries in bead_data.items():
                 for fname, sig in entries:
                     bead_lengths[fname][bead_num] = len(sig)
                     bead_nums.add(bead_num)
                     file_names.add(fname)
-
             bead_nums = sorted(bead_nums)
             file_names = sorted(file_names)
             heatmap_data = np.zeros((len(file_names), len(bead_nums)))
-
             for i, fname in enumerate(file_names):
                 for j, bead in enumerate(bead_nums):
                     heatmap_data[i, j] = bead_lengths[fname].get(bead, 0)
-
             df_hm = pd.DataFrame(heatmap_data, index=file_names, columns=bead_nums)
             fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.4)))
             sns.heatmap(df_hm, annot=False, cmap="YlGnBu", ax=ax, cbar=True)
@@ -125,45 +120,36 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
 
     drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
     min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
-
-    st.markdown("### Dip Detection")
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
 
-    ok_signals = [sig[:min(len(s) for _, s in ok_beads[selected_bead])] for _, sig in ok_beads[selected_bead]]
-    ok_matrix = np.vstack(ok_signals)
-    baseline = np.median(ok_matrix, axis=0)
-    lower_line = baseline * (1 - drop_margin / 100)
-
     fig = go.Figure()
+    nok_files = defaultdict(list)
+    drop_summary = []
+
+    for bead_num in sorted(test_beads.keys()):
+        ok_signals = [sig[:min(len(s) for _, s in ok_beads[bead_num])] for _, sig in ok_beads.get(bead_num, []) if bead_num in ok_beads]
+        if not ok_signals:
+            continue
+        ok_matrix = np.vstack(ok_signals)
+        baseline = np.median(ok_matrix, axis=0)
+        lower_line = baseline * (1 - drop_margin / 100)
+
+        for fname, sig in test_beads[bead_num]:
+            min_len = min(len(sig), len(lower_line))
+            sig = sig[:min_len]
+            lower = lower_line[:min_len]
+            below = sig < lower
+            percent_below = 100 * np.sum(below) / len(sig)
+            if percent_below >= min_drop_percent:
+                nok_files[fname].append(bead_num)
+            if bead_num == selected_bead:
+                color = 'red' if percent_below >= min_drop_percent else 'black'
+                fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
+                drop_summary.append({"File": fname, "Bead": bead_num, "% Below": round(percent_below, 2), "NOK": percent_below >= min_drop_percent})
 
     for fname, sig in ok_beads[selected_bead]:
-        sig = sig[:len(lower_line)]
+        sig = sig[:min(len(s) for _, s in ok_beads[selected_bead])]
         fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
-
-    drop_summary = []
-nok_files = defaultdict(list)
-
-# Run dip detection across all bead numbers
-for bead_num, signals in test_beads.items():
-    ok_signals = [sig[:min(len(s) for _, s in ok_beads[bead_num])] for _, sig in ok_beads.get(bead_num, []) if bead_num in ok_beads]
-    if not ok_signals:
-        continue
-    ok_matrix = np.vstack(ok_signals)
-    baseline = np.median(ok_matrix, axis=0)
-    lower_line = baseline * (1 - drop_margin / 100)
-
-    for fname, sig in signals:
-        min_len = min(len(sig), len(lower_line))
-        sig = sig[:min_len]
-        lower = lower_line[:min_len]
-        below = sig < lower
-        percent_below = 100 * np.sum(below) / len(sig)
-        if percent_below >= min_drop_percent:
-            nok_files[fname].append(bead_num)
-        if bead_num == selected_bead:
-            color = 'red' if percent_below >= min_drop_percent else 'black'
-            fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
-            drop_summary.append({"File": fname, "Bead": bead_num, "% Below": round(percent_below, 2), "NOK": percent_below >= min_drop_percent})
 
     fig.add_trace(go.Scatter(y=lower_line, mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
     st.plotly_chart(fig, use_container_width=True)
@@ -173,15 +159,9 @@ for bead_num, signals in test_beads.items():
 
     st.markdown("### Final Welding Result Summary")
     all_files = sorted({fname for bead_entries in test_beads.values() for fname, _ in bead_entries})
-nok_beads_per_file = defaultdict(set)
-for bead_num, entries in test_beads.items():
-    for fname, _ in entries:
-        if fname in nok_files and bead_num in nok_files[fname]:
-            nok_beads_per_file[fname].add(bead_num)
-
-final_summary = pd.DataFrame({
-    "File Name": all_files,
-    "NOK Beads": [", ".join(map(str, sorted(nok_files[fname]))) if fname in nok_files else "" for fname in all_files],
-    "Welding Result": ["NOK" if fname in nok_files else "OK" for fname in all_files]
-})
-st.dataframe(final_summary)
+    final_summary = pd.DataFrame({
+        "File Name": all_files,
+        "NOK Beads": [", ".join(map(str, sorted(nok_files[fname]))) if fname in nok_files else "" for fname in all_files],
+        "Welding Result": ["NOK" if fname in nok_files else "OK" for fname in all_files]
+    })
+    st.dataframe(final_summary)
