@@ -105,9 +105,19 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     summary = []
     nok_files = set()
 
+    # Compute global lower/upper lines for visualization
+    all_signals = [entry["data"] for entry in st.session_state["bead_data"][selected_bead]]
+    min_len = min(len(sig) for sig in all_signals)
+    all_signals_trimmed = [sig[:min_len] for sig in all_signals]
+    stacked_signals = np.vstack(all_signals_trimmed)
+    global_median = np.median(stacked_signals, axis=0)
+    lower_line = global_median * (1 - sensitivity / 100)
+    upper_line = global_median * (1 + sensitivity / 100)
+
+    # Plot each signal
     for entry in st.session_state["bead_data"][selected_bead]:
         file = entry["file"]
-        signal = entry["data"]
+        signal = entry["data"][:min_len]
         median_val = np.median(signal)
         threshold_val = median_val * (1 - sensitivity / 100)
         below_thresh = signal < threshold_val
@@ -124,6 +134,10 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
 
         if is_nok:
             nok_files.add(file)
+
+    # Add global lower and upper bound lines
+    fig.add_trace(go.Scatter(y=lower_line, mode='lines', name='Lower Threshold', line=dict(color='green', width=1, dash='dash')))
+    fig.add_trace(go.Scatter(y=upper_line, mode='lines', name='Upper Threshold', line=dict(color='green', width=1, dash='dash')))
 
     st.markdown(f"### Signal Plot for Bead #{selected_bead}")
     st.plotly_chart(fig, use_container_width=True)
