@@ -50,7 +50,7 @@ def segment_beads(df, column, threshold):
 
 # --- Streamlit App Setup ---
 st.set_page_config(page_title="Signal Behavior Viewer", layout="wide")
-st.title("Signal Behavior Exploration (No Statistical Thresholds)")
+st.title("Signal Behavior Exploration V12")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -125,7 +125,8 @@ if "bead_data" in st.session_state:
 
 # --- Envelope Plot Viewer ---
 st.markdown("### Signal Envelope Viewer")
-selected_bead_env = st.selectbox("Select Bead Number for Envelope Plot", sorted(st.session_state["bead_data"].keys()), key="envelope")
+if "bead_data" in st.session_state:
+    selected_bead_env = st.selectbox("Select Bead Number for Envelope Plot", sorted(st.session_state["bead_data"].keys()), key="envelope")
 
 signals_env = st.session_state["bead_data"][selected_bead_env]
 min_len_env = min(len(sig) for _, sig in signals_env)
