@@ -40,6 +40,7 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 # --- App Setup ---
+st.session_state.setdefault("segmented", False)
 st.set_page_config(layout="wide")
 st.title("Dip Valley Detector Using OK Reference")
 
@@ -67,7 +68,7 @@ drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.
 min_duration = st.sidebar.slider("Min Dip Duration (points)", 5, 500, 50, 5)
 window_size = st.sidebar.slider("Rolling Window Size", 5, 200, 50, 5)
 
-if ok_zip and test_zip and filter_column and signal_column:
+if st.button("Segment Beads") and ok_zip and test_zip and filter_column and signal_column:
     with open("ok.zip", "wb") as f:
         f.write(ok_zip.getbuffer())
     with open("test.zip", "wb") as f:
@@ -86,10 +87,17 @@ if ok_zip and test_zip and filter_column and signal_column:
                 bead_data[bead_num].append((os.path.basename(file), sig))
         return bead_data
 
-    ok_beads = process_csvs(ok_files)
+        ok_beads = process_csvs(ok_files)
     test_beads = process_csvs(test_files)
+    st.session_state["ok_beads"] = ok_beads
+    st.session_state["test_beads"] = test_beads
+    st.session_state["segmented"] = True
 
     results = []
+
+    if st.session_state.get("segmented"):
+    ok_beads = st.session_state["ok_beads"]
+    test_beads = st.session_state["test_beads"]
 
     for bead_num in sorted(test_beads.keys()):
         if bead_num not in ok_beads:
