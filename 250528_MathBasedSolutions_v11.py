@@ -5,6 +5,8 @@ import pandas as pd
 import plotly.graph_objects as go
 import numpy as np
 from collections import defaultdict
+from scipy.stats import zscore
+from scipy.signal import correlate
 
 # --- File Extraction ---
 def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
@@ -46,27 +48,20 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-# --- Dip Valley Detection ---
-def detect_valley_mask(signal, baseline, drop_threshold, min_duration):
-    in_dip = False
-    dip_start = 0
-    mask = np.zeros_like(signal, dtype=bool)
-    for i in range(len(signal)):
-        if not in_dip and signal[i] < baseline[i] - drop_threshold:
-            in_dip = True
-            dip_start = i
-        elif in_dip and signal[i] >= baseline[i] - drop_threshold:
-            dip_end = i
-            if dip_end - dip_start >= min_duration:
-                mask[dip_start:dip_end] = True
-            in_dip = False
-    if in_dip and len(signal) - dip_start >= min_duration:
-        mask[dip_start:] = True
-    return mask
+# --- Scoring Anomalies ---
+def compute_baseline(signals):
+    return np.median(signals, axis=0)
+
+def compute_rms(signal, window_size):
+    return np.sqrt(pd.Series(signal).rolling(window=window_size, center=True, min_periods=1).mean()**2).to_numpy()
+
+def compute_correlation_to_baseline(signal, baseline):
+    corr = np.corrcoef(signal, baseline)[0, 1]
+    return corr
 
 # --- Streamlit App ---
-st.set_page_config(page_title="Dip Valley Visualizer", layout="wide")
-st.title("Dip Valley Detector for Laser Welding")
+st.set_page_config(page_title="Advanced Dip Analyzer", layout="wide")
+st.title("Behavioral Anomaly Viewer for Welding Signals")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -98,28 +93,46 @@ with st.sidebar:
             st.success("Bead segmentation completed.")
 
 if "bead_data" in st.session_state:
-    drop_threshold = st.sidebar.slider("Drop Threshold (absolute units)", 0.01, 5.0, 0.3, 0.01)
-    min_duration = st.sidebar.slider("Min duration of dip (points)", 10, 500, 50, 5)
-    window_size = st.sidebar.slider("Rolling window size for baseline", 3, 101, 25, 2)
-
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
+    rms_window = st.sidebar.slider("RMS Energy Window Size", 5, 200, 50, 5)
+    correlation_threshold = st.sidebar.slider("Min Correlation to Baseline (to be OK)", 0.0, 1.0, 0.8, 0.01)
+    energy_threshold = st.sidebar.slider("Z-score Energy Drop (to be NOK)", -5.0, 0.0, -2.0, 0.1)
 
     if selected_bead:
-        fig = go.Figure()
         signals = st.session_state["bead_data"][selected_bead]
-
         min_len = min(len(sig) for _, sig in signals if hasattr(sig, '__len__'))
-        for file_name, signal in signals:
+        trimmed_signals = [sig[:min_len] for _, sig in signals]
+        stacked = np.vstack(trimmed_signals)
+        baseline = compute_baseline(stacked)
+        baseline_energy = compute_rms(baseline, rms_window)
+
+        fig = go.Figure()
+        summary = []
+
+        for (file_name, signal) in signals:
             signal = signal[:min_len]
-            baseline = pd.Series(signal).rolling(window=window_size, center=True, min_periods=1).median().to_numpy()
-            mask = detect_valley_mask(signal, baseline, drop_threshold, min_duration)
+            corr = compute_correlation_to_baseline(signal, baseline)
+            signal_energy = compute_rms(signal, rms_window)
+            energy_diff_z = zscore(signal_energy - baseline_energy)
 
-            normal_y = np.where(mask, np.nan, signal)
-            dip_y = np.where(mask, signal, np.nan)
+            dip_mask = energy_diff_z < energy_threshold
+            normal_y = np.where(dip_mask, np.nan, signal)
+            dip_y = np.where(dip_mask, signal, np.nan)
+            color = 'red' if corr < correlation_threshold else 'black'
 
-            fig.add_trace(go.Scatter(y=normal_y, mode='lines', name=f"{file_name} (normal)", line=dict(color='black')))
-            fig.add_trace(go.Scatter(y=dip_y, mode='lines', name=f"{file_name} (dip)", line=dict(color='red')))
+            fig.add_trace(go.Scatter(y=normal_y, mode='lines', name=f"{file_name} (normal)", line=dict(color=color)))
+            fig.add_trace(go.Scatter(y=dip_y, mode='lines', name=f"{file_name} (dip)", line=dict(color='orange')))
 
-        fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline', line=dict(color='green', dash='dash')))
-        fig.update_layout(title=f"Dip Valley Detection - Bead #{selected_bead}", xaxis_title="Index", yaxis_title="Signal Value")
+            summary.append({
+                "File": file_name,
+                "Correlation": round(corr, 3),
+                "Min Energy Z": round(np.min(energy_diff_z), 2),
+                "Potential NOK": corr < correlation_threshold and np.min(energy_diff_z) < energy_threshold
+            })
+
+        fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline (median)', line=dict(color='green', dash='dash')))
+        fig.update_layout(title=f"Bead #{selected_bead} - Behavioral Anomaly Detection", xaxis_title="Index", yaxis_title="Signal Value")
         st.plotly_chart(fig, use_container_width=True)
+
+        st.markdown("### Summary Table")
+        st.dataframe(pd.DataFrame(summary))
