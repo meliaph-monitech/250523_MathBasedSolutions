@@ -107,29 +107,61 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     window_size = st.sidebar.slider("Rolling Window Size (for rolling methods)", 1, 100, 25)
     exclude_outliers = st.sidebar.checkbox("Exclude extreme high values when calculating thresholds", value=True)
 
-    fig = go.Figure()
     signal_col = st.session_state["signal_column"]
-    summary = []
     nok_files = set()
     nok_beads_by_file = defaultdict(list)
 
+    # --- Full pass through all beads to determine NOKs ---
+    for bead_num, entries in st.session_state["bead_data"].items():
+        all_signals = [entry["data"] for entry in entries]
+        min_len = min(len(sig) for sig in all_signals)
+        all_signals_trimmed = [sig[:min_len] for sig in all_signals]
+        stacked_signals = np.vstack(all_signals_trimmed)
+
+        if exclude_outliers:
+            p95 = np.percentile(stacked_signals, 95, axis=0)
+            stacked_signals = np.minimum(stacked_signals, p95)
+
+        if threshold_mode == "Global Median":
+            baseline = np.median(stacked_signals, axis=0)
+        elif threshold_mode == "Global Mean":
+            baseline = np.mean(stacked_signals, axis=0)
+        elif threshold_mode == "Rolling Median":
+            baseline = pd.DataFrame(stacked_signals).median(axis=0).rolling(window_size, min_periods=1, center=True).median().to_numpy()
+        elif threshold_mode == "Rolling Quantile (10%)":
+            baseline = pd.DataFrame(stacked_signals).quantile(0.10, axis=0).rolling(window_size, min_periods=1, center=True).mean().to_numpy()
+        elif threshold_mode == "Trimmed Mean (10%)":
+            baseline = trim_mean(stacked_signals, proportiontocut=0.1, axis=0)
+        else:
+            baseline = np.median(stacked_signals, axis=0)
+
+        lower_line = baseline * (1 - sensitivity / 100)
+
+        for entry in entries:
+            file = entry["file"]
+            signal = entry["data"][:min_len]
+            below_thresh = signal < lower_line
+            drop_percent = 100 * np.sum(below_thresh) / len(signal)
+            is_nok = drop_percent >= min_drop_percent
+            if is_nok:
+                nok_files.add(file)
+                nok_beads_by_file[file].append(str(bead_num))
+
+    # --- Plotting for selected bead ---
+    fig = go.Figure()
     all_signals = [entry["data"] for entry in st.session_state["bead_data"][selected_bead]]
     min_len = min(len(sig) for sig in all_signals)
     all_signals_trimmed = [sig[:min_len] for sig in all_signals]
     stacked_signals = np.vstack(all_signals_trimmed)
-    p95 = np.percentile(stacked_signals, 95, axis=0)
-    stacked_signals = np.minimum(stacked_signals, p95)
-
 
     if exclude_outliers:
         p95 = np.percentile(stacked_signals, 95, axis=0)
-        mask = stacked_signals <= p95
-        stacked_signals = np.where(mask, stacked_signals, np.nan)
+        stacked_signals = np.minimum(stacked_signals, p95)
 
     if threshold_mode == "Global Median":
-        baseline = np.nanmedian(stacked_signals, axis=0)
+        baseline = np.median(stacked_signals, axis=0)
     elif threshold_mode == "Global Mean":
-        baseline = np.nanmean(stacked_signals, axis=0)
+        baseline = np.mean(stacked_signals, axis=0)
     elif threshold_mode == "Rolling Median":
         baseline = pd.DataFrame(stacked_signals).median(axis=0).rolling(window_size, min_periods=1, center=True).median().to_numpy()
     elif threshold_mode == "Rolling Quantile (10%)":
@@ -137,11 +169,12 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     elif threshold_mode == "Trimmed Mean (10%)":
         baseline = trim_mean(stacked_signals, proportiontocut=0.1, axis=0)
     else:
-        baseline = np.nanmedian(stacked_signals, axis=0)
+        baseline = np.median(stacked_signals, axis=0)
 
     lower_line = baseline * (1 - sensitivity / 100)
     upper_line = baseline * (1 + sensitivity / 100)
 
+    summary = []
     for entry in st.session_state["bead_data"][selected_bead]:
         file = entry["file"]
         signal = entry["data"][:min_len]
@@ -149,7 +182,6 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
         drop_percent = 100 * np.sum(below_thresh) / len(signal)
         is_nok = drop_percent >= min_drop_percent
         color = 'red' if is_nok else 'black'
-
         fig.add_trace(go.Scatter(y=signal, mode='lines', name=file, line=dict(color=color)))
 
         summary.append({
@@ -157,10 +189,6 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
             "% Below Threshold": round(drop_percent, 2),
             "NOK": is_nok
         })
-
-        if is_nok:
-            nok_files.add(file)
-            nok_beads_by_file[file].append(str(selected_bead))
 
     fig.add_trace(go.Scatter(y=lower_line, mode='lines', name='Lower Threshold', line=dict(color='green', width=1, dash='dash')))
     fig.add_trace(go.Scatter(y=upper_line, mode='lines', name='Upper Threshold', line=dict(color='green', width=1, dash='dash')))
