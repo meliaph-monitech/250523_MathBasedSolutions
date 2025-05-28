@@ -120,6 +120,7 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
 
     drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
     min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
+    min_duration = st.sidebar.slider("Minimum Duration for Drop (consecutive points)", 10, 200, 10, 5)
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
 
     # Detection Logic
@@ -141,11 +142,23 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
             sig = sig[:min_len]
             lower = lower_line[:min_len]
             below = sig < lower
+
+            # Check for consecutive drops
+            consecutive_drops = 0
+            for i in range(1, len(below)):
+                if below[i] and below[i-1]:
+                    consecutive_drops += 1
+                else:
+                    consecutive_drops = 0
+                if consecutive_drops >= min_duration:
+                    break
+
             percent_below = 100 * np.sum(below) / len(sig)
-            if percent_below >= min_drop_percent:
+            if percent_below >= min_drop_percent and consecutive_drops >= min_duration:
                 nok_files[fname].append(bead_num)
+
             if bead_num == selected_bead:
-                color = 'red' if percent_below >= min_drop_percent else 'black'
+                color = 'red' if percent_below >= min_drop_percent and consecutive_drops >= min_duration else 'black'
                 drop_summary.append({"File": fname, "Bead": bead_num, "% Below": round(percent_below, 2), "NOK": percent_below >= min_drop_percent})
 
     # Plot for selected bead
@@ -156,11 +169,10 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
         fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
 
     for fname, sig in test_beads.get(selected_bead, []):
-    # Ensure correct indentation and color logic
         min_len = min(len(sig), len(lower_line))
         sig = sig[:min_len]
         color = 'red' if fname in nok_files and selected_bead in nok_files[fname] else 'black'
-        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=0.5), name=f"Test: {fname}"))
+        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
 
     fig.add_trace(go.Scatter(y=lower_line[:min_len], mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
     st.plotly_chart(fig, use_container_width=True)
