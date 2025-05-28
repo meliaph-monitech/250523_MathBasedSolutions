@@ -122,30 +122,48 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
     min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
 
+    # Detection Logic
+    nok_files = defaultdict(list)
+    drop_summary = []
+    beadwise_baselines = {}
+
+    for bead_num in sorted(test_beads.keys()):
+        ok_signals = [sig[:min(len(s) for _, s in ok_beads[bead_num])] for _, sig in ok_beads.get(bead_num, []) if bead_num in ok_beads]
+        if not ok_signals:
+            continue
+        ok_matrix = np.vstack(ok_signals)
+        baseline = np.median(ok_matrix, axis=0)
+        lower_line = baseline * (1 - drop_margin / 100)
+        beadwise_baselines[bead_num] = lower_line
+
+        for fname, sig in test_beads[bead_num]:
+            min_len = min(len(sig), len(lower_line))
+            sig = sig[:min_len]
+            lower = lower_line[:min_len]
+            below = sig < lower
+            percent_below = 100 * np.sum(below) / len(sig)
+            if percent_below >= min_drop_percent:
+                nok_files[fname].append(bead_num)
+            if bead_num == selected_bead:
+                color = 'red' if percent_below >= min_drop_percent else 'black'
+                drop_summary.append({"File": fname, "Bead": bead_num, "% Below": round(percent_below, 2), "NOK": percent_below >= min_drop_percent})
+
+    # Plot for selected bead
     fig = go.Figure()
-for fname, sig in ok_beads[selected_bead]:
-    sig = sig[:min(len(s) for _, s in ok_beads[selected_bead])]
-    fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
+    lower_line = beadwise_baselines.get(selected_bead)
+    for fname, sig in ok_beads.get(selected_bead, []):
+        sig = sig[:min(len(s) for _, s in ok_beads[selected_bead])]
+        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
 
-for fname, sig in test_beads.get(selected_bead, []):
-    ok_signals = [s[:min(len(s) for _, s in ok_beads[selected_bead])] for _, s in ok_beads.get(selected_bead, [])]
-    if not ok_signals:
-        continue
-    ok_matrix = np.vstack(ok_signals)
-    baseline = np.median(ok_matrix, axis=0)
-    lower_line = baseline * (1 - drop_margin / 100)
+    for fname, sig in test_beads.get(selected_bead, []):
+        min_len = min(len(sig), len(lower_line))
+        sig = sig[:min_len]
+        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(width=1.5), name=f"Test: {fname}"))
 
-    min_len = min(len(sig), len(lower_line))
-    sig = sig[:min_len]
-    lower = lower_line[:min_len]
-    below = sig < lower
-    percent_below = 100 * np.sum(below) / len(sig)
-    color = 'red' if percent_below >= min_drop_percent else 'black'
-    fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
+    fig.add_trace(go.Scatter(y=lower_line[:min_len], mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
+    st.plotly_chart(fig, use_container_width=True)
 
-fig.add_trace(go.Scatter(y=lower_line[:min_len], mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
-st.plotly_chart(fig, use_container_width=True)
-
+    # Display Summary Tables
     st.markdown("### Drop Summary Table")
     st.dataframe(pd.DataFrame(drop_summary))
 
