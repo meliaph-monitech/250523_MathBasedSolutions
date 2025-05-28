@@ -107,11 +107,10 @@ with st.sidebar:
             st.session_state["signal_column"] = signal_column
             st.success("Bead segmentation completed.")
 
-# --- Visualization & Summary ---
 if "bead_data" in st.session_state:
     if "bead_metadata" in st.session_state:
-        st.markdown("### Bead Segmentation Summary")
-        st.dataframe(pd.DataFrame(st.session_state["bead_metadata"]))
+    st.markdown("### Bead Segmentation Summary")
+    st.dataframe(pd.DataFrame(st.session_state["bead_metadata"]))
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Detection Settings")
@@ -155,9 +154,8 @@ if "bead_data" in st.session_state:
             fig.update_layout(title=f"Bead #{selected_bead} Signal Overlay", xaxis_title="Index", yaxis_title="Signal")
             st.plotly_chart(fig, use_container_width=True)
 
-    # Final Welding Result Summary
     st.markdown("### Final Welding Result Summary")
-    all_files = sorted(set(m["file"] for m in st.session_state["bead_metadata"]))
+    all_files = sorted(set(m["file"] for m in st.session_state.get("bead_metadata", [])))
     summary_data = []
     for fname in all_files:
         nok_beads = final_nok_map.get(fname, [])
