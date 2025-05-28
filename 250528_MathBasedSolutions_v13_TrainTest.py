@@ -88,6 +88,11 @@ if st.sidebar.button("Segment Beads"):
         ok_signals = [sig[:min(len(s) for _, s in ok_beads[selected_bead])] for _, sig in ok_beads[selected_bead]]
         ok_matrix = np.vstack(ok_signals)
         baseline = np.median(ok_matrix, axis=0)
+
+        if drop_margin is None or min_drop_percent is None:
+            st.warning("Set drop margin and minimum drop percentage to continue.")
+            st.stop()
+
         lower_line = baseline * (1 - drop_margin / 100)
 
         # Plot
@@ -154,6 +159,7 @@ if st.sidebar.button("Segment Beads"):
         with col2:
             generate_heatmap(test_beads, "Bead Lengths in Test ZIP")
 
+        st.markdown("### Bead Segmentation Complete. Now configure dip detection parameters.")
         drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
         min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
 
