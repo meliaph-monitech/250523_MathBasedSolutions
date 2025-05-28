@@ -107,7 +107,7 @@ if "bead_data" in st.session_state:
         fig = go.Figure()
         signals = st.session_state["bead_data"][selected_bead]
 
-        min_len = min(len(sig) for _, sig in signals)
+        min_len = min(len(sig) for _, sig in signals if hasattr(sig, '__len__'))
         for file_name, signal in signals:
             signal = signal[:min_len]
             baseline = np.median(signal) * np.ones_like(signal)
