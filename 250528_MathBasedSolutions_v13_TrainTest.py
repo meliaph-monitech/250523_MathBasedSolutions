@@ -105,7 +105,7 @@ if ok_zip and test_zip:
                     heatmap_data[i, j] = bead_lengths[fname].get(bead, 0)
 
             df_hm = pd.DataFrame(heatmap_data, index=file_names, columns=bead_nums)
-            fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.2)))
+            fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.4)))
             sns.heatmap(df_hm, annot=False, cmap="YlGnBu", ax=ax, cbar=True)
             ax.set_title(title)
             ax.set_xlabel("Bead Number")
@@ -144,8 +144,10 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
     nok_files = defaultdict(list)
 
     for fname, sig in test_beads.get(selected_bead, []):
-        sig = sig[:len(lower_line)]
-        below = sig < lower_line
+        min_len = min(len(sig), len(lower_line))
+        sig = sig[:min_len]
+        lower = lower_line[:min_len]
+        below = sig < lower
         percent_below = 100 * np.sum(below) / len(sig)
         color = 'red' if percent_below >= min_drop_percent else 'black'
         fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
