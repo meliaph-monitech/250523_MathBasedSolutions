@@ -50,7 +50,7 @@ def segment_beads(df, column, threshold):
 
 # --- Streamlit App Setup ---
 st.set_page_config(page_title="Signal Behavior Viewer", layout="wide")
-st.title("Signal Behavior Exploration (No Statistical Thresholds)")
+st.title("Signal Behavior Exploration: RMS Energy Heatmap")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
