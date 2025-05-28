@@ -116,7 +116,7 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     all_signals = [entry["data"] for entry in st.session_state["bead_data"][selected_bead]]
     min_len = min(len(sig) for sig in all_signals)
     all_signals_trimmed = [sig[:min_len] for sig in all_signals]
-    # stacked_signals = np.vstack(all_signals_trimmed)
+    stacked_signals = np.vstack(all_signals_trimmed)
     p95 = np.percentile(stacked_signals, 95, axis=0)
     stacked_signals = np.minimum(stacked_signals, p95)
 
