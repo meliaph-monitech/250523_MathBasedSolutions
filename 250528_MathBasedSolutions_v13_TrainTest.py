@@ -105,7 +105,7 @@ if ok_zip and test_zip:
                     heatmap_data[i, j] = bead_lengths[fname].get(bead, 0)
 
             df_hm = pd.DataFrame(heatmap_data, index=file_names, columns=bead_nums)
-            fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.4)))
+            fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.2)))
             sns.heatmap(df_hm, annot=False, cmap="YlGnBu", ax=ax, cbar=True)
             ax.set_title(title)
             ax.set_xlabel("Bead Number")
