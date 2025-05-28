@@ -124,25 +124,24 @@ if "bead_data" in st.session_state:
     st.plotly_chart(fig, use_container_width=True)
 
 # --- Envelope Plot Viewer ---
-st.markdown("### Signal Envelope Viewer")
 if "bead_data" in st.session_state:
-    selected_bead_env = st.selectbox("Select Bead Number for Envelope Plot", sorted(st.session_state["bead_data"].keys()), key="envelope")
+    st.markdown("### Signal Envelope Viewer")
+    bead_keys_env = sorted(st.session_state["bead_data"].keys())
+    if bead_keys_env:
+        selected_bead_env = st.selectbox("Select Bead Number for Envelope Plot", bead_keys_env, key="envelope")
+        signals_env = st.session_state["bead_data"].get(selected_bead_env, [])
 
-    signals_env = st.session_state["bead_data"].get(selected_bead_env, [])
+        min_len_env = min(len(sig) for _, sig in signals_env)
+        fig_env = go.Figure()
+        for fname, sig in signals_env:
+            sig = sig[:min_len_env]
+            envelope = np.abs(hilbert(sig))
+            fig_env.add_trace(go.Scatter(y=envelope, mode='lines', name=fname, line=dict(width=1)))
 
-signals_env = st.session_state.get("bead_data", {}).get(selected_bead_env, [])
-min_len_env = min(len(sig) for _, sig in signals_env)
-
-fig_env = go.Figure()
-for fname, sig in signals_env:
-    sig = sig[:min_len_env]
-    envelope = np.abs(hilbert(sig))
-    fig_env.add_trace(go.Scatter(y=envelope, mode='lines', name=fname, line=dict(width=1)))
-
-fig_env.update_layout(
-    title=f"Envelope Plot - Bead #{selected_bead_env}",
-    xaxis_title="Time Index",
-    yaxis_title="Envelope Amplitude",
-    showlegend=True
-)
-st.plotly_chart(fig_env, use_container_width=True)
+        fig_env.update_layout(
+            title=f"Envelope Plot - Bead #{selected_bead_env}",
+            xaxis_title="Time Index",
+            yaxis_title="Envelope Amplitude",
+            showlegend=True
+        )
+        st.plotly_chart(fig_env, use_container_width=True)
