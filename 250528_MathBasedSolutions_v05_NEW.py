@@ -3,255 +3,137 @@ import zipfile
 import os
 import pandas as pd
 import plotly.graph_objects as go
-from scipy.stats import skew, kurtosis
-import numpy as np
-from collections import defaultdict
+from io import BytesIO
 
-# --- File Extraction ---
-def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
+# --- Setup ---
+st.set_page_config(page_title="Laser Welding Inspection", layout="wide")
+st.title("Laser Welding Signal Analysis")
+
+# --- Sidebar: Step 1: Upload ZIP ---
+zip_file = st.sidebar.file_uploader("Upload ZIP File", type="zip")
+
+# --- Helper: Extract ZIP ---
+def extract_zip(file) -> list:
+    extract_dir = "extracted_csvs"
     if os.path.exists(extract_dir):
-        for file in os.listdir(extract_dir):
-            os.remove(os.path.join(extract_dir, file))
+        for f in os.listdir(extract_dir):
+            os.remove(os.path.join(extract_dir, f))
     else:
         os.makedirs(extract_dir)
 
-    try:
-        with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
-            zip_ref.extractall(extract_dir)
-    except zipfile.BadZipFile:
-        st.error("The uploaded file is not a valid ZIP file.")
-        st.stop()
+    with zipfile.ZipFile(file, 'r') as zip_ref:
+        zip_ref.extractall(extract_dir)
 
-    csv_files = [f for f in os.listdir(extract_dir) if f.endswith('.csv')]
-    if not csv_files:
-        st.error("No CSV files found in the ZIP file.")
-        st.stop()
+    return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
 
-    return [os.path.join(extract_dir, f) for f in csv_files]
+# --- Main Processing ---
+if zip_file:
+    csv_paths = extract_zip(zip_file)
+    sample_df = pd.read_csv(csv_paths[0])
 
-# --- Bead Segmentation ---
-def segment_beads(df, column, threshold):
-    start_indices = []
-    end_indices = []
-    signal = df[column].to_numpy()
-    i = 0
-    while i < len(signal):
-        if signal[i] > threshold:
-            start = i
-            while i < len(signal) and signal[i] > threshold:
-                i += 1
-            end = i - 1
-            start_indices.append(start)
-            end_indices.append(end)
-        else:
-            i += 1
-    return list(zip(start_indices, end_indices))
+    # Sidebar: Step 2 - Choose filter column by index
+    st.sidebar.markdown("### Filter Options")
+    column_names = list(sample_df.columns)
+    col_options = {f"[{i}] {name}": name for i, name in enumerate(column_names)}
+    filter_col_label = st.sidebar.selectbox("Choose filter column:", list(col_options.keys()))
+    filter_col = col_options[filter_col_label]
 
-# --- Feature Extraction ---
-def extract_advanced_features(signal):
-    if len(signal) == 0:
-        return [0] * 8
-    mean_val = np.mean(signal)
-    std_val = np.std(signal)
-    min_val = np.min(signal)
-    max_val = np.max(signal)
-    median_val = np.median(signal)
-    skewness = skew(signal)
-    kurt = kurtosis(signal)
-    peak_to_peak = max_val - min_val
-    return [mean_val, std_val, min_val, max_val, median_val, skewness, kurt, peak_to_peak]
+    # Sidebar: Step 3 - Input filter value
+    filter_val = st.sidebar.text_input("Enter filter value (exact match):")
 
-def extract_frequency_features(signal, n_fft=256):
-    if len(signal) < n_fft:
-        signal = np.pad(signal, (0, n_fft - len(signal)), mode='constant')
-    else:
-        signal = signal[:n_fft]
-    fft_vals = np.fft.fft(signal)
-    fft_magnitude = np.abs(fft_vals)[:n_fft // 2]
-    avg_power = np.mean(fft_magnitude)
-    peak_power = np.max(fft_magnitude)
-    dom_freq_index = np.argmax(fft_magnitude)
-    return [avg_power, peak_power, dom_freq_index]
+    # Sidebar: Step 4 - Choose signal column
+    signal_col_label = st.sidebar.selectbox("Choose signal column:", list(col_options.keys()))
+    signal_col = col_options[signal_col_label]
 
-# --- App Layout ---
-st.set_page_config(layout="wide")
-st.title("Laser Welding Anomaly Detection")
+    # Sidebar: Step 5 - Button to apply filter
+    if st.sidebar.button("Run Main Filter"):
+        # Step 6: Process each CSV file
+        bead_info = []  # to store filename, bead_number, start_index, end_index, length
 
-with st.sidebar:
-    uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
-    use_freq_features = st.checkbox("Include Frequency-Domain Features", value=False)
-
-    if uploaded_file:
-        with open("temp.zip", "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        csv_files = extract_zip("temp.zip")
-        st.success(f"Extracted {len(csv_files)} CSV files")
-
-        df_sample = pd.read_csv(csv_files[0])
-        columns = df_sample.columns.tolist()
-        filter_column = st.selectbox("Select column for filtering", columns)
-        threshold = st.number_input("Enter filtering threshold", value=0.0)
-
-        if st.button("Segment Beads"):
-            bead_segments = {}
-            metadata = []
-            for file in csv_files:
-                df = pd.read_csv(file)
-                segments = segment_beads(df, filter_column, threshold)
-                if segments:
-                    bead_segments[file] = segments
-                    for bead_num, (start, end) in enumerate(segments, start=1):
-                        metadata.append({"file": file, "bead_number": bead_num, "start_index": start, "end_index": end})
-            st.success("Bead segmentation complete")
-            st.session_state["metadata"] = metadata
-
-        if st.button("Run Feature Extraction") and "metadata" in st.session_state:
-            with st.spinner("Extracting features..."):
-                features_by_bead = defaultdict(list)
-                for entry in st.session_state["metadata"]:
-                    df = pd.read_csv(entry["file"])
-                    bead_segment = df.iloc[entry["start_index"]:entry["end_index"] + 1]
-                    time_features = extract_advanced_features(bead_segment.iloc[:, 0].values)
-                    freq_features = extract_frequency_features(bead_segment.iloc[:, 0].values) if use_freq_features else []
-                    all_features = time_features + freq_features
-                    bead_number = entry["bead_number"]
-                    features_by_bead[bead_number].append(all_features)
-                st.success("Feature extraction complete")
-                st.session_state["features_by_bead"] = features_by_bead
-                st.session_state["use_freq_features"] = use_freq_features
-
-        # Feature configuration
-        st.subheader("Set Thresholds for Feature Extraction")
-
-        feature_names = [
-            "Mean Value", "STD Value", "Min Value", "Max Value", "Median Value",
-            "Skewness", "Kurtosis", "Peak-to-Peak"
-        ]
-        if st.session_state.get("use_freq_features", False):
-            feature_names += ["Avg FFT Power", "Peak FFT Power", "Dominant Freq Index"]
-
-        thresholds = {}
-        active_features = {}
-        selected_logic = {}
-
-        for idx, feature_name in enumerate(feature_names):
-            feature_values = []
-            for feature_list in st.session_state["features_by_bead"].values():
-                feature_values.extend([features[idx] for features in feature_list])
-            min_val, max_val = min(feature_values), max(feature_values)
-
-            active_features[feature_name] = st.checkbox(f"Activate {feature_name}", value=False)
-            if active_features[feature_name]:
-                logic_option = st.selectbox(
-                    f"Logic for {feature_name}",
-                    options=["Within Range", "Greater Than", "Less Than", "Outside Range"],
-                    key=f"logic_{feature_name}"
-                )
-                selected_logic[feature_name] = logic_option
-
-                if logic_option in ["Within Range", "Outside Range"]:
-                    min_thresh = st.slider(f"{feature_name} - Min", min_val, max_val, min_val)
-                    max_thresh = st.slider(f"{feature_name} - Max", min_val, max_val, max_val)
-                    thresholds[feature_name] = (min_thresh, max_thresh)
+        def segment_beads(df, column, threshold=0.05):
+            start_indices, end_indices = [], []
+            signal = df[column].to_numpy()
+            i = 0
+            while i < len(signal):
+                if signal[i] > threshold:
+                    start = i
+                    while i < len(signal) and signal[i] > threshold:
+                        i += 1
+                    end = i - 1
+                    start_indices.append(start)
+                    end_indices.append(end)
                 else:
-                    val = st.slider(f"{feature_name} Threshold", min_val, max_val, min_val)
-                    thresholds[feature_name] = val
+                    i += 1
+            return list(zip(start_indices, end_indices))
 
-# --- Classification ---
-if "features_by_bead" in st.session_state:
-    st.subheader("Feature Extraction Results")
+        file_bead_data = {}  # {file_name: list of (bead_num, start, end, df_segment)}
 
-    feature_names = [
-        "Mean Value", "STD Value", "Min Value", "Max Value", "Median Value",
-        "Skewness", "Kurtosis", "Peak-to-Peak"
-    ]
-    if st.session_state.get("use_freq_features", False):
-        feature_names += ["Avg FFT Power", "Peak FFT Power", "Dominant Freq Index"]
+        for path in csv_paths:
+            df = pd.read_csv(path)
+            if filter_val and str(filter_val) not in df[filter_col].astype(str).unique():
+                continue
+            bead_segments = segment_beads(df, signal_col)
+            for bead_num, (start, end) in enumerate(bead_segments, start=1):
+                length = end - start + 1
+                bead_info.append({
+                    "File Name": os.path.basename(path),
+                    "Bead Number": bead_num,
+                    "Start Index": start,
+                    "End Index": end,
+                    "Length": length
+                })
+                file_bead_data.setdefault(bead_num, []).append({
+                    "file": os.path.basename(path),
+                    "data": df.iloc[start:end+1][signal_col].reset_index(drop=True)
+                })
 
-    results = []
-    for bead_number, feature_list in st.session_state["features_by_bead"].items():
-        metadata_entries = [entry for entry in st.session_state["metadata"] if entry["bead_number"] == bead_number]
-        for i, features in enumerate(feature_list):
-            classification = "OK"
-            for j, feature_name in enumerate(feature_names):
-                if active_features.get(feature_name, False):
-                    feature_value = features[j]
-                    logic = selected_logic[feature_name]
-                    threshold = thresholds[feature_name]
+        # Step 6: Show expander with bead info
+        with st.expander("Bead Segmentation Summary"):
+            st.dataframe(pd.DataFrame(bead_info))
 
-                    if logic == "Within Range":
-                        min_val, max_val = threshold
-                        if not (min_val <= feature_value <= max_val):
-                            classification = "NOK"
-                            break
-                    elif logic == "Greater Than":
-                        if not (feature_value > threshold):
-                            classification = "NOK"
-                            break
-                    elif logic == "Less Than":
-                        if not (feature_value < threshold):
-                            classification = "NOK"
-                            break
-                    elif logic == "Outside Range":
-                        min_val, max_val = threshold
-                        if not (feature_value < min_val or feature_value > max_val):
-                            classification = "NOK"
-                            break
+        # Step 7: Add threshold adjustable settings
+        st.sidebar.markdown("### Threshold Settings")
+        sensitivity = st.sidebar.slider("Threshold sensitivity (% below baseline)", 0, 100, 10)
+        nok_percentage = st.sidebar.slider("Min % of dropped points to flag as NOK", 0, 100, 15)
 
-            file_name = metadata_entries[i]["file"] if i < len(metadata_entries) else "Unknown"
-            results.append({
-                "File Name": os.path.basename(file_name),
-                "Bead Number": bead_number,
-                "Classification": classification,
-                "Features": features
-            })
+        # Step 8: Choose bead number to inspect
+        bead_choices = sorted(file_bead_data.keys())
+        chosen_bead = st.sidebar.selectbox("Select bead number to plot:", bead_choices)
 
-    results_df = pd.DataFrame(results)
-    with st.expander("Show All Bead Classification Results"):
-        st.dataframe(results_df)
-    nok_results_df = results_df[results_df["Classification"] == "NOK"]
-    st.dataframe(nok_results_df)
-
-    # --- Visualization ---
-    bead_numbers = sorted(set(entry["bead_number"] for entry in st.session_state["metadata"]))
-    selected_bead = st.selectbox("Select Bead Number to Display", bead_numbers)
-
-    if selected_bead:
+        # --- Plot and summary ---
+        nok_flags = []
         fig = go.Figure()
-        selected_bead_data = [entry for entry in st.session_state["metadata"] if entry["bead_number"] == selected_bead]
+        summary = []
 
-        for bead_info in selected_bead_data:
-            file_name = bead_info["file"]
-            start_idx = bead_info["start_index"]
-            end_idx = bead_info["end_index"]
+        for entry in file_bead_data[chosen_bead]:
+            file = entry["file"]
+            signal = entry["data"]
+            baseline = signal.median()
+            threshold = baseline * (1 - sensitivity / 100)
+            below_threshold = signal < threshold
+            percent_dropped = 100 * below_threshold.sum() / len(signal)
+            is_nok = percent_dropped >= nok_percentage
+            color = 'red' if is_nok else 'black'
 
-            df = pd.read_csv(file_name)
-            signal = df.iloc[start_idx:end_idx + 1, 0].values
+            fig.add_trace(go.Scatter(y=signal, mode='lines', name=file, line=dict(color=color)))
+            summary.append({
+                "File Name": file,
+                "% Below Threshold": round(percent_dropped, 2),
+                "NOK": is_nok
+            })
+            if is_nok:
+                nok_flags.append(file)
 
-            match = results_df[
-                (results_df["Bead Number"] == selected_bead) &
-                (results_df["File Name"] == os.path.basename(file_name))
-            ]
+        st.markdown("### NOK Summary for Selected Bead")
+        st.dataframe(pd.DataFrame(summary))
 
-            if not match.empty:
-                classification = match["Classification"].values[0]
-                color = 'red' if classification == "NOK" else 'black'
-            else:
-                classification = "Unknown"
-                color = 'gray'
+        fig.update_layout(title=f"Bead #{chosen_bead} Signal Plot", xaxis_title="Time Index", yaxis_title=signal_col)
+        st.plotly_chart(fig, use_container_width=True)
 
-            fig.add_trace(go.Scatter(
-                y=signal,
-                mode='lines',
-                name=f"File: {os.path.basename(file_name)}, Bead: {selected_bead} ({classification})",
-                line=dict(color=color)
-            ))
+        # Step 9: Summary per CSV file
+        full_summary = pd.DataFrame(summary)
+        final_summary = full_summary.groupby("File Name")["NOK"].any().reset_index()
+        final_summary["Welding Result"] = final_summary["NOK"].apply(lambda x: "NOK" if x else "OK")
 
-        fig.update_layout(
-            title=f"Bead Number {selected_bead} Signal",
-            xaxis_title="Time Index",
-            yaxis_title="Signal Value",
-            showlegend=True
-        )
-        st.plotly_chart(fig)
+        st.markdown("### Final Summary Per CSV File")
+        st.dataframe(final_summary)
