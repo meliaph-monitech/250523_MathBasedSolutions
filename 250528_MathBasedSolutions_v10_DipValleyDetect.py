@@ -47,10 +47,10 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 # --- Dip Valley Detection ---
-def detect_valley_dip(signal, baseline, drop_threshold, min_duration):
+def detect_valley_mask(signal, baseline, drop_threshold, min_duration):
     in_dip = False
     dip_start = 0
-    dips = []
+    mask = np.zeros_like(signal, dtype=bool)
     for i in range(len(signal)):
         if not in_dip and signal[i] < baseline[i] - drop_threshold:
             in_dip = True
@@ -58,11 +58,11 @@ def detect_valley_dip(signal, baseline, drop_threshold, min_duration):
         elif in_dip and signal[i] >= baseline[i] - drop_threshold:
             dip_end = i
             if dip_end - dip_start >= min_duration:
-                dips.append((dip_start, dip_end))
+                mask[dip_start:dip_end] = True
             in_dip = False
     if in_dip and len(signal) - dip_start >= min_duration:
-        dips.append((dip_start, len(signal)))
-    return dips
+        mask[dip_start:] = True
+    return mask
 
 # --- Streamlit App ---
 st.set_page_config(page_title="Dip Valley Visualizer", layout="wide")
@@ -91,7 +91,7 @@ with st.sidebar:
                 segments = segment_beads(df, filter_column, threshold)
                 for bead_num, (start, end) in enumerate(segments, start=1):
                     signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
-                    bead_data[(os.path.basename(file), bead_num)].append(signal)
+                    bead_data[bead_num].append((os.path.basename(file), signal))
 
             st.session_state["bead_data"] = bead_data
             st.session_state["signal_column"] = signal_column
@@ -101,22 +101,24 @@ if "bead_data" in st.session_state:
     drop_threshold = st.sidebar.slider("Drop Threshold (absolute units)", 0.01, 5.0, 0.3, 0.01)
     min_duration = st.sidebar.slider("Min duration of dip (points)", 10, 500, 50, 5)
 
-    selected = st.selectbox("Select Bead", list(st.session_state["bead_data"].keys()))
+    selected_bead = st.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
 
-    if selected:
-        signal_list = st.session_state["bead_data"][selected]
-        if signal_list:
-            signal = signal_list[0]
+    if selected_bead:
+        fig = go.Figure()
+        signals = st.session_state["bead_data"][selected_bead]
+
+        min_len = min(len(sig) for _, sig in signals)
+        for file_name, signal in signals:
+            signal = signal[:min_len]
             baseline = np.median(signal) * np.ones_like(signal)
-            dips = detect_valley_dip(signal, baseline, drop_threshold, min_duration)
+            mask = detect_valley_mask(signal, baseline, drop_threshold, min_duration)
 
-            fig = go.Figure()
-            fig.add_trace(go.Scatter(y=signal, mode='lines', name=f"Signal: {selected}", line=dict(color='black')))
+            normal_y = np.where(mask, np.nan, signal)
+            dip_y = np.where(mask, signal, np.nan)
 
-            for start, end in dips:
-                fig.add_shape(type="rect", x0=start, x1=end, y0=min(signal), y1=max(signal),
-                              fillcolor="rgba(255,0,0,0.2)", line=dict(width=0))
+            fig.add_trace(go.Scatter(y=normal_y, mode='lines', name=f"{file_name} (normal)", line=dict(color='black')))
+            fig.add_trace(go.Scatter(y=dip_y, mode='lines', name=f"{file_name} (dip)", line=dict(color='red')))
 
-            fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline', line=dict(color='green', dash='dash')))
-            fig.update_layout(title=f"Dip Valley Detection for {selected}", xaxis_title="Index", yaxis_title="Signal Value")
-            st.plotly_chart(fig, use_container_width=True)
+        fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline', line=dict(color='green', dash='dash')))
+        fig.update_layout(title=f"Dip Valley Detection - Bead #{selected_bead}", xaxis_title="Index", yaxis_title="Signal Value")
+        st.plotly_chart(fig, use_container_width=True)
