@@ -61,7 +61,7 @@ def compute_correlation_to_baseline(signal, baseline):
 
 # --- Streamlit App ---
 st.set_page_config(page_title="Advanced Dip Analyzer", layout="wide")
-st.title("Behavioral Anomaly Viewer for Welding Signals")
+st.title("Behavioral Anomaly Viewer for Welding Signals V11")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
