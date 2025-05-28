@@ -111,6 +111,7 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     signal_col = st.session_state["signal_column"]
     summary = []
     nok_files = set()
+    nok_beads_by_file = defaultdict(list)
 
     all_signals = [entry["data"] for entry in st.session_state["bead_data"][selected_bead]]
     min_len = min(len(sig) for sig in all_signals)
@@ -156,6 +157,7 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
 
         if is_nok:
             nok_files.add(file)
+            nok_beads_by_file[file].append(str(selected_bead))
 
     fig.add_trace(go.Scatter(y=lower_line, mode='lines', name='Lower Threshold', line=dict(color='green', width=1, dash='dash')))
     fig.add_trace(go.Scatter(y=upper_line, mode='lines', name='Upper Threshold', line=dict(color='green', width=1, dash='dash')))
@@ -170,6 +172,7 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     all_files = {entry["file"] for entry in st.session_state["bead_metadata"]}
     final_result = pd.DataFrame({
         "File Name": list(all_files),
-        "Welding Result": ["NOK" if f in nok_files else "OK" for f in all_files]
+        "Welding Result": ["NOK" if f in nok_files else "OK" for f in all_files],
+        "NOK Beads": [", ".join(nok_beads_by_file.get(f, [])) for f in all_files]
     })
     st.dataframe(final_result)
