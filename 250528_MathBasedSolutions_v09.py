@@ -47,14 +47,14 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-# --- Sharp Dip Detection ---
-def has_sharp_dip(signal, baseline, min_length, min_drop_value):
+# --- Sharp Dip and Shape Similarity Detection ---
+def has_sharp_dip(signal, baseline, min_length, min_dip_value):
     dip = baseline - signal
     i = 0
     while i < len(dip):
-        if dip[i] > min_drop_value:
+        if dip[i] > min_dip_value:
             start = i
-            while i < len(dip) and dip[i] > min_drop_value:
+            while i < len(dip) and dip[i] > min_dip_value:
                 i += 1
             end = i
             run_length = end - start
@@ -63,6 +63,10 @@ def has_sharp_dip(signal, baseline, min_length, min_drop_value):
         else:
             i += 1
     return False
+
+def cosine_similarity(a, b):
+    a, b = np.array(a), np.array(b)
+    return np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b))
 
 # --- App Layout ---
 st.set_page_config(page_title="Laser Welding Inspection", layout="wide")
@@ -114,9 +118,9 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
 
     st.sidebar.markdown("---")
     st.sidebar.markdown("### Detection Configuration")
-    detection_mode = st.sidebar.selectbox("Detection Method", ["Sharp Dip"])
     min_dip_length = st.sidebar.slider("Min consecutive points (dip length)", 1, 50, 5)
     min_dip_value = st.sidebar.slider("Min dip amount (absolute value)", 0.01, 5.0, 0.2, 0.01)
+    shape_similarity_thresh = st.sidebar.slider("Min pattern similarity (cosine)", 0.0, 1.0, 0.90, 0.01)
 
     selected_bead = st.sidebar.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
     threshold_mode = st.sidebar.selectbox(
@@ -156,7 +160,9 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
         for entry in entries:
             file = entry["file"]
             signal = entry["data"][:min_len]
-            is_nok = has_sharp_dip(signal, baseline, min_dip_length, min_dip_value)
+            dip_flag = has_sharp_dip(signal, baseline, min_dip_length, min_dip_value)
+            shape_similarity = cosine_similarity(signal, baseline)
+            is_nok = dip_flag and shape_similarity < shape_similarity_thresh
             if is_nok:
                 nok_files.add(file)
                 nok_beads_by_file[file].append(str(bead_num))
@@ -188,13 +194,16 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     for entry in st.session_state["bead_data"][selected_bead]:
         file = entry["file"]
         signal = entry["data"][:min_len]
-        is_nok = has_sharp_dip(signal, baseline, min_dip_length, min_dip_value)
+        dip_flag = has_sharp_dip(signal, baseline, min_dip_length, min_dip_value)
+        shape_similarity = cosine_similarity(signal, baseline)
+        is_nok = dip_flag and shape_similarity < shape_similarity_thresh
         color = 'red' if is_nok else 'black'
         fig.add_trace(go.Scatter(y=signal, mode='lines', name=file, line=dict(color=color)))
 
         summary.append({
             "File Name": file,
-            "NOK": is_nok
+            "NOK": is_nok,
+            "Shape Similarity": round(shape_similarity, 3)
         })
 
     fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline', line=dict(color='green', width=1, dash='dash')))
