@@ -49,9 +49,15 @@ ok_zip = st.sidebar.file_uploader("ZIP file with ONLY OK welds", type="zip", key
 st.sidebar.header("Upload Test Data")
 test_zip = st.sidebar.file_uploader("ZIP file to Test", type="zip", key="test")
 
-filter_column = st.sidebar.text_input("Column name for segmentation")
+sample_file = pd.read_csv(ok_zip) if ok_zip else None
+if sample_file is not None:
+    all_columns = sample_file.columns.tolist()
+else:
+    all_columns = []
+
+filter_column = st.sidebar.selectbox("Select column for segmentation", all_columns) if all_columns else None
 threshold = st.sidebar.number_input("Threshold for filtering", value=0.0)
-signal_column = st.sidebar.text_input("Signal column for analysis")
+signal_column = st.sidebar.selectbox("Select signal column for analysis", all_columns) if all_columns else None
 drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
 min_duration = st.sidebar.slider("Min Dip Duration (points)", 5, 500, 50, 5)
 window_size = st.sidebar.slider("Rolling Window Size", 5, 200, 50, 5)
