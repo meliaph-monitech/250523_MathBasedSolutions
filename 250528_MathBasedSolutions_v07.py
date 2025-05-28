@@ -157,8 +157,8 @@ if "bead_metadata" in st.session_state and "bead_data" in st.session_state:
     st.markdown(f"### Signal Plot for Bead #{selected_bead}")
     st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("### Drop Summary per File for This Bead")
-    st.dataframe(pd.DataFrame(summary))
+    # st.markdown("### Drop Summary per File for This Bead")
+    # st.dataframe(pd.DataFrame(summary))
 
     st.markdown("### Final Welding Result Summary")
     all_files = {entry["file"] for entry in st.session_state["bead_metadata"]}
