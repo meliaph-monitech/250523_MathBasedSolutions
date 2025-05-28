@@ -94,45 +94,57 @@ with st.sidebar:
 
 if "bead_data" in st.session_state:
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
-    rms_window = st.sidebar.slider("RMS Energy Window Size", 5, 200, 50, 5)
-    correlation_threshold = st.sidebar.slider("Min Correlation to Baseline (to be OK)", 0.0, 1.0, 0.8, 0.01)
-    energy_threshold = st.sidebar.slider("Z-score Energy Drop (to be NOK)", -5.0, 0.0, -2.0, 0.1)
 
-    if selected_bead:
-        signals = st.session_state["bead_data"][selected_bead]
-        min_len = min(len(sig) for _, sig in signals if hasattr(sig, '__len__'))
-        trimmed_signals = [sig[:min_len] for _, sig in signals]
-        stacked = np.vstack(trimmed_signals)
-        baseline = compute_baseline(stacked)
+    signals = st.session_state["bead_data"][selected_bead]
+    min_len = min(len(sig) for _, sig in signals if hasattr(sig, '__len__'))
+    trimmed_signals = [sig[:min_len] for _, sig in signals]
+    stacked = np.vstack(trimmed_signals)
+    baseline = compute_baseline(stacked)
+
+    # Precompute dynamic thresholds
+    correlations = [compute_correlation_to_baseline(sig[:min_len], baseline) for _, sig in signals]
+    all_energy_zscores = []
+    default_rms_win = max(10, min_len // 10)
+    for _, sig in signals:
+        energy = compute_rms(sig[:min_len], default_rms_win)
+        baseline_energy = compute_rms(baseline, default_rms_win)
+        all_energy_zscores.extend(zscore(energy - baseline_energy))
+
+    min_corr, max_corr = round(min(correlations), 2), round(max(correlations), 2)
+    min_z, max_z = round(min(all_energy_zscores), 2), round(max(all_energy_zscores), 2)
+
+    rms_window = st.sidebar.slider("RMS Energy Window Size", 5, min_len, default_rms_win, 5)
+    correlation_threshold = st.sidebar.slider("Min Correlation to Baseline (to be OK)", min_corr, 1.0, round(np.median(correlations), 2), 0.01)
+    energy_threshold = st.sidebar.slider("Z-score Energy Drop (to be NOK)", min_z, 0.0, round(np.percentile(all_energy_zscores, 10), 2), 0.1)
+
+    fig = go.Figure()
+    summary = []
+
+    for (file_name, signal) in signals:
+        signal = signal[:min_len]
+        corr = compute_correlation_to_baseline(signal, baseline)
+        signal_energy = compute_rms(signal, rms_window)
         baseline_energy = compute_rms(baseline, rms_window)
+        energy_diff_z = zscore(signal_energy - baseline_energy)
 
-        fig = go.Figure()
-        summary = []
+        dip_mask = energy_diff_z < energy_threshold
+        normal_y = np.where(dip_mask, np.nan, signal)
+        dip_y = np.where(dip_mask, signal, np.nan)
+        color = 'red' if corr < correlation_threshold else 'black'
 
-        for (file_name, signal) in signals:
-            signal = signal[:min_len]
-            corr = compute_correlation_to_baseline(signal, baseline)
-            signal_energy = compute_rms(signal, rms_window)
-            energy_diff_z = zscore(signal_energy - baseline_energy)
+        fig.add_trace(go.Scatter(y=normal_y, mode='lines', name=f"{file_name} (normal)", line=dict(color=color)))
+        fig.add_trace(go.Scatter(y=dip_y, mode='lines', name=f"{file_name} (dip)", line=dict(color='orange')))
 
-            dip_mask = energy_diff_z < energy_threshold
-            normal_y = np.where(dip_mask, np.nan, signal)
-            dip_y = np.where(dip_mask, signal, np.nan)
-            color = 'red' if corr < correlation_threshold else 'black'
+        summary.append({
+            "File": file_name,
+            "Correlation": round(corr, 3),
+            "Min Energy Z": round(np.min(energy_diff_z), 2),
+            "Potential NOK": corr < correlation_threshold and np.min(energy_diff_z) < energy_threshold
+        })
 
-            fig.add_trace(go.Scatter(y=normal_y, mode='lines', name=f"{file_name} (normal)", line=dict(color=color)))
-            fig.add_trace(go.Scatter(y=dip_y, mode='lines', name=f"{file_name} (dip)", line=dict(color='orange')))
+    fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline (median)', line=dict(color='green', dash='dash')))
+    fig.update_layout(title=f"Bead #{selected_bead} - Behavioral Anomaly Detection", xaxis_title="Index", yaxis_title="Signal Value")
+    st.plotly_chart(fig, use_container_width=True)
 
-            summary.append({
-                "File": file_name,
-                "Correlation": round(corr, 3),
-                "Min Energy Z": round(np.min(energy_diff_z), 2),
-                "Potential NOK": corr < correlation_threshold and np.min(energy_diff_z) < energy_threshold
-            })
-
-        fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline (median)', line=dict(color='green', dash='dash')))
-        fig.update_layout(title=f"Bead #{selected_bead} - Behavioral Anomaly Detection", xaxis_title="Index", yaxis_title="Signal Value")
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("### Summary Table")
-        st.dataframe(pd.DataFrame(summary))
+    st.markdown("### Summary Table")
+    st.dataframe(pd.DataFrame(summary))
