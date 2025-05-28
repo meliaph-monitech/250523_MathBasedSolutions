@@ -6,7 +6,6 @@ import plotly.graph_objects as go
 import numpy as np
 from collections import defaultdict
 from scipy.stats import zscore
-from scipy.signal import correlate
 
 # --- File Extraction ---
 def extract_zip(uploaded_file, extract_dir="extracted_csvs"):
@@ -48,20 +47,27 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-# --- Scoring Anomalies ---
+# --- Baseline & Peer Comparison ---
 def compute_baseline(signals):
     return np.median(signals, axis=0)
 
 def compute_rms(signal, window_size):
     return np.sqrt(pd.Series(signal).rolling(window=window_size, center=True, min_periods=1).mean()**2).to_numpy()
 
-def compute_correlation_to_baseline(signal, baseline):
-    corr = np.corrcoef(signal, baseline)[0, 1]
-    return corr
+def mean_pairwise_correlation(matrix):
+    n = matrix.shape[0]
+    total_corr = 0
+    count = 0
+    for i in range(n):
+        for j in range(i + 1, n):
+            corr = np.corrcoef(matrix[i], matrix[j])[0, 1]
+            total_corr += corr
+            count += 1
+    return total_corr / count if count > 0 else 1.0
 
 # --- Streamlit App ---
-st.set_page_config(page_title="Advanced Dip Analyzer", layout="wide")
-st.title("Behavioral Anomaly Viewer for Welding Signals V11")
+st.set_page_config(page_title="Welding Anomaly Viewer", layout="wide")
+st.title("Laser Welding Behavioral Anomaly Detection V11")
 
 with st.sidebar:
     uploaded_file = st.file_uploader("Upload a ZIP file containing CSV files", type=["zip"])
@@ -80,6 +86,7 @@ with st.sidebar:
         signal_column = st.selectbox("Select signal column for analysis", columns)
 
         if st.button("Segment Beads"):
+            bead_metadata = []
             bead_data = defaultdict(list)
             for file in csv_files:
                 df = pd.read_csv(file)
@@ -87,64 +94,73 @@ with st.sidebar:
                 for bead_num, (start, end) in enumerate(segments, start=1):
                     signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
                     bead_data[bead_num].append((os.path.basename(file), signal))
+                    bead_metadata.append({
+                        "file": os.path.basename(file),
+                        "bead_number": bead_num,
+                        "start_index": start,
+                        "end_index": end,
+                        "length": end - start + 1
+                    })
 
             st.session_state["bead_data"] = bead_data
+            st.session_state["bead_metadata"] = bead_metadata
             st.session_state["signal_column"] = signal_column
             st.success("Bead segmentation completed.")
 
 if "bead_data" in st.session_state:
-    selected_bead = st.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
+    st.markdown("### Bead Segmentation Summary")
+    st.dataframe(pd.DataFrame(st.session_state["bead_metadata"]))
 
-    signals = st.session_state["bead_data"][selected_bead]
-    min_len = min(len(sig) for _, sig in signals if hasattr(sig, '__len__'))
-    trimmed_signals = [sig[:min_len] for _, sig in signals]
-    stacked = np.vstack(trimmed_signals)
-    baseline = compute_baseline(stacked)
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### Detection Settings")
 
-    # Precompute dynamic thresholds
-    correlations = [compute_correlation_to_baseline(sig[:min_len], baseline) for _, sig in signals]
-    all_energy_zscores = []
-    default_rms_win = max(10, min_len // 10)
-    for _, sig in signals:
-        energy = compute_rms(sig[:min_len], default_rms_win)
-        baseline_energy = compute_rms(baseline, default_rms_win)
-        all_energy_zscores.extend(zscore(energy - baseline_energy))
+    selected_bead = st.sidebar.selectbox("Select Bead Number to Display", sorted(st.session_state["bead_data"].keys()))
+    rms_window = st.sidebar.slider("RMS Window", 5, 200, 50, 5)
+    corr_threshold = st.sidebar.slider("Min Corr to Baseline", 0.0, 1.0, 0.8, 0.01)
+    peer_threshold = st.sidebar.slider("Min Peer Corr", 0.0, 1.0, 0.7, 0.01)
+    zscore_threshold = st.sidebar.slider("Min Energy Z-score", -5.0, 0.0, -2.0, 0.1)
 
-    min_corr, max_corr = round(min(correlations), 2), round(max(correlations), 2)
-    min_z, max_z = round(min(all_energy_zscores), 2), round(max(all_energy_zscores), 2)
-
-    rms_window = st.sidebar.slider("RMS Energy Window Size", 5, min_len, default_rms_win, 5)
-    correlation_threshold = st.sidebar.slider("Min Correlation to Baseline (to be OK)", min_corr, 1.0, round(np.median(correlations), 2), 0.01)
-    energy_threshold = st.sidebar.slider("Z-score Energy Drop (to be NOK)", min_z, 0.0, round(np.percentile(all_energy_zscores, 10), 2), 0.1)
-
+    final_nok_map = defaultdict(list)
     fig = go.Figure()
-    summary = []
 
-    for (file_name, signal) in signals:
-        signal = signal[:min_len]
-        corr = compute_correlation_to_baseline(signal, baseline)
-        signal_energy = compute_rms(signal, rms_window)
-        baseline_energy = compute_rms(baseline, rms_window)
-        energy_diff_z = zscore(signal_energy - baseline_energy)
+    for bead_num, signal_group in st.session_state["bead_data"].items():
+        min_len = min(len(sig) for _, sig in signal_group)
+        signals = [sig[:min_len] for _, sig in signal_group]
+        files = [fname for fname, _ in signal_group]
+        matrix = np.vstack(signals)
+        baseline = compute_baseline(matrix)
+        peer_corr = mean_pairwise_correlation(matrix)
+        baseline_rms = compute_rms(baseline, rms_window)
 
-        dip_mask = energy_diff_z < energy_threshold
-        normal_y = np.where(dip_mask, np.nan, signal)
-        dip_y = np.where(dip_mask, signal, np.nan)
-        color = 'red' if corr < correlation_threshold else 'black'
+        if bead_num == selected_bead:
+            for i, (fname, sig) in enumerate(zip(files, signals)):
+                corr = np.corrcoef(sig, baseline)[0, 1]
+                sig_rms = compute_rms(sig, rms_window)
+                energy_diff_z = zscore(sig_rms - baseline_rms)
+                dip_mask = energy_diff_z < zscore_threshold
+                is_nok = (corr < corr_threshold) and (peer_corr < peer_threshold) and np.min(energy_diff_z) < zscore_threshold
 
-        fig.add_trace(go.Scatter(y=normal_y, mode='lines', name=f"{file_name} (normal)", line=dict(color=color)))
-        fig.add_trace(go.Scatter(y=dip_y, mode='lines', name=f"{file_name} (dip)", line=dict(color='orange')))
+                if is_nok:
+                    final_nok_map[fname].append(bead_num)
 
-        summary.append({
-            "File": file_name,
-            "Correlation": round(corr, 3),
-            "Min Energy Z": round(np.min(energy_diff_z), 2),
-            "Potential NOK": corr < correlation_threshold and np.min(energy_diff_z) < energy_threshold
+                normal_y = np.where(dip_mask, np.nan, sig)
+                dip_y = np.where(dip_mask, sig, np.nan)
+
+                fig.add_trace(go.Scatter(y=normal_y, mode='lines', name=f"{fname} (normal)", line=dict(color='black')))
+                fig.add_trace(go.Scatter(y=dip_y, mode='lines', name=f"{fname} (dip)", line=dict(color='red')))
+
+            fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline', line=dict(color='green', dash='dash')))
+            fig.update_layout(title=f"Bead #{selected_bead} Signal Overlay", xaxis_title="Index", yaxis_title="Signal")
+            st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### Final Welding Result Summary")
+    all_files = sorted(set(m["file"] for m in st.session_state["bead_metadata"]))
+    summary_data = []
+    for fname in all_files:
+        nok_beads = final_nok_map.get(fname, [])
+        summary_data.append({
+            "File Name": fname,
+            "Welding Result": "NOK" if nok_beads else "OK",
+            "NOK Beads": ", ".join(map(str, nok_beads)) if nok_beads else ""
         })
-
-    fig.add_trace(go.Scatter(y=baseline, mode='lines', name='Baseline (median)', line=dict(color='green', dash='dash')))
-    fig.update_layout(title=f"Bead #{selected_bead} - Behavioral Anomaly Detection", xaxis_title="Index", yaxis_title="Signal Value")
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("### Summary Table")
-    st.dataframe(pd.DataFrame(summary))
+    st.dataframe(pd.DataFrame(summary_data))
