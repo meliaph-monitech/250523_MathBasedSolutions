@@ -178,9 +178,6 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
     st.plotly_chart(fig, use_container_width=True)
 
     # Display Summary Tables
-    st.markdown("### Drop Summary Table")
-    st.dataframe(pd.DataFrame(drop_summary))
-
     st.markdown("### Final Welding Result Summary")
     all_files = sorted({fname for bead_entries in test_beads.values() for fname, _ in bead_entries})
     final_summary = pd.DataFrame({
@@ -188,4 +185,8 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
         "NOK Beads": [", ".join(map(str, sorted(nok_files[fname]))) if fname in nok_files else "" for fname in all_files],
         "Welding Result": ["NOK" if fname in nok_files else "OK" for fname in all_files]
     })
+
+    st.markdown("### Drop Summary Table")
+    st.dataframe(pd.DataFrame(drop_summary))
+    
     st.dataframe(final_summary)
