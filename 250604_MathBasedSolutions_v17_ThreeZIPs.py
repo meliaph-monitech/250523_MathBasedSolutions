@@ -129,21 +129,21 @@ if all(k in st.session_state for k in ["zip1_beads_raw", "zip2_beads_raw", "zip3
             if show_raw:
                 fig.add_trace(go.Scatter(y=raw_signal, mode='lines', name=f"Raw ZIP1: {fname}", line=dict(color='gray', width=1)))
             if show_filtered:
-                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP1: {fname}", line=dict(color='blue', width=2)))
+                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP1: {fname}", line=dict(color='blue', width=1)))
 
     if show_zip2 and selected_bead in zip2_beads:
         for fname, raw_signal, smoothed_signal in zip2_beads[selected_bead]:
             if show_raw:
                 fig.add_trace(go.Scatter(y=raw_signal, mode='lines', name=f"Raw ZIP2: {fname}", line=dict(color='lightgray', width=1)))
             if show_filtered:
-                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP2: {fname}", line=dict(color='red', width=2)))
+                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP2: {fname}", line=dict(color='red', width=1)))
 
     if show_zip3 and selected_bead in zip3_beads:
         for fname, raw_signal, smoothed_signal in zip3_beads[selected_bead]:
             if show_raw:
                 fig.add_trace(go.Scatter(y=raw_signal, mode='lines', name=f"Raw ZIP3: {fname}", line=dict(color='darkgray', width=1)))
             if show_filtered:
-                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP3: {fname}", line=dict(color='green', width=2)))
+                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP3: {fname}", line=dict(color='green', width=1)))
 
     if not fig.data:
         st.warning("No data to display. Please check your display options.")
