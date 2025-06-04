@@ -133,7 +133,7 @@ if "ok_beads_raw" in st.session_state and "test_beads_raw" in st.session_state:
                 fig.add_trace(go.Scatter(
                     y=smoothed_signal,
                     mode='lines',
-                    name=f"Smoothed OK: {fname}",
+                    name=f"Smoothed 1: {fname}",
                     line=dict(color='blue', width=2)
                 ))
 
@@ -150,7 +150,7 @@ if "ok_beads_raw" in st.session_state and "test_beads_raw" in st.session_state:
                 fig.add_trace(go.Scatter(
                     y=smoothed_signal,
                     mode='lines',
-                    name=f"Smoothed Test: {fname}",
+                    name=f"Smoothed 2: {fname}",
                     line=dict(color='red', width=2)
                 ))
 
