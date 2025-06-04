@@ -164,28 +164,36 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
     # Plot for selected bead
     fig = go.Figure()
     lower_line = beadwise_baselines.get(selected_bead)
-    for fname, sig in ok_beads.get(selected_bead, []):
-        sig = sig[:min(len(s) for _, s in ok_beads[selected_bead])]
-        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
-
-    for fname, sig in test_beads.get(selected_bead, []):
-        min_len = min(len(sig), len(lower_line))
-        sig = sig[:min_len]
-        color = 'red' if fname in nok_files and selected_bead in nok_files[fname] else 'black'
-        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
-
-    fig.add_trace(go.Scatter(y=lower_line[:min_len], mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
+    
+    # Add traces for OK beads
+    for ok_fname, ok_sig in ok_beads.get(selected_bead, []):
+        ok_sig = ok_sig[:min(len(s) for _, s in ok_beads[selected_bead])]
+        fig.add_trace(go.Scatter(
+            y=ok_sig,
+            mode='lines',
+            line=dict(color='gray', width=1),
+            name=f"OK: {ok_fname}"  # Explicitly label as "OK"
+        ))
+    
+    # Add traces for Test beads
+    for test_fname, test_sig in test_beads.get(selected_bead, []):
+        min_len = min(len(test_sig), len(lower_line))
+        test_sig = test_sig[:min_len]
+        color = 'red' if test_fname in nok_files and selected_bead in nok_files[test_fname] else 'black'
+        fig.add_trace(go.Scatter(
+            y=test_sig,
+            mode='lines',
+            line=dict(color=color, width=1.5),
+            name=f"Test: {test_fname}"  # Explicitly label as "Test"
+        ))
+    
+    # Add the lower reference line
+    fig.add_trace(go.Scatter(
+        y=lower_line[:min_len],
+        mode='lines',
+        name='Lower Reference',
+        line=dict(color='green', dash='dash')
+    ))
+    
+    # Display plot
     st.plotly_chart(fig, use_container_width=True)
-
-    # Display Summary Tables
-    st.markdown("### Drop Summary Table")
-    st.dataframe(pd.DataFrame(drop_summary))
-
-    st.markdown("### Final Welding Result Summary")
-    all_files = sorted({fname for bead_entries in test_beads.values() for fname, _ in bead_entries})
-    final_summary = pd.DataFrame({
-        "File Name": all_files,
-        "NOK Beads": [", ".join(map(str, sorted(nok_files[fname]))) if fname in nok_files else "" for fname in all_files],
-        "Welding Result": ["NOK" if fname in nok_files else "OK" for fname in all_files]
-    })
-    st.dataframe(final_summary)
