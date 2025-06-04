@@ -49,12 +49,12 @@ st.set_page_config(layout="wide")
 st.title("Savitzky-Golay Filter Exploration")
 
 st.sidebar.header("Upload Data")
-ok_zip = st.sidebar.file_uploader("ZIP file 1", type="zip")
-test_zip = st.sidebar.file_uploader("ZIP file 2", type="zip")
+zip1 = st.sidebar.file_uploader("ZIP 1: Defocusing", type="zip")
+zip2 = st.sidebar.file_uploader("ZIP 2: GAP", type="zip")
+zip3 = st.sidebar.file_uploader("ZIP 3: OK", type="zip")
 
-# Sidebar preprocessing options
-if ok_zip and test_zip:
-    with zipfile.ZipFile(ok_zip, 'r') as zip_ref:
+if zip1 and zip2 and zip3:
+    with zipfile.ZipFile(zip1, 'r') as zip_ref:
         sample_csv_name = [name for name in zip_ref.namelist() if name.endswith('.csv')][0]
         with zip_ref.open(sample_csv_name) as sample_file_raw:
             sample_file = pd.read_csv(sample_file_raw)
@@ -65,13 +65,16 @@ if ok_zip and test_zip:
     signal_column = st.sidebar.selectbox("Select signal column for analysis", columns)
 
     if st.sidebar.button("Segment Beads"):
-        with open("ok.zip", "wb") as f:
-            f.write(ok_zip.getbuffer())
-        with open("test.zip", "wb") as f:
-            f.write(test_zip.getbuffer())
+        with open("zip1.zip", "wb") as f:
+            f.write(zip1.getbuffer())
+        with open("zip2.zip", "wb") as f:
+            f.write(zip2.getbuffer())
+        with open("zip3.zip", "wb") as f:
+            f.write(zip3.getbuffer())
 
-        ok_files = extract_zip("ok.zip", "ok_data")
-        test_files = extract_zip("test.zip", "test_data")
+        zip1_files = extract_zip("zip1.zip", "data_zip1")
+        zip2_files = extract_zip("zip2.zip", "data_zip2")
+        zip3_files = extract_zip("zip3.zip", "data_zip3")
 
         def process_files(files):
             bead_data = defaultdict(list)
@@ -83,76 +86,64 @@ if ok_zip and test_zip:
                     bead_data[bead_num].append((os.path.basename(file), signal))
             return bead_data
 
-        st.session_state["ok_beads_raw"] = process_files(ok_files)
-        st.session_state["test_beads_raw"] = process_files(test_files)
+        st.session_state["zip1_beads_raw"] = process_files(zip1_files)
+        st.session_state["zip2_beads_raw"] = process_files(zip2_files)
+        st.session_state["zip3_beads_raw"] = process_files(zip3_files)
         st.success("✅ Bead segmentation completed.")
 
-# --- Post-segmentation logic ---
-if "ok_beads_raw" in st.session_state and "test_beads_raw" in st.session_state:
+# --- Filtering and Display ---
+if all(k in st.session_state for k in ["zip1_beads_raw", "zip2_beads_raw", "zip3_beads_raw"]):
     st.sidebar.header("Savitzky-Golay Filtering")
-
     window_length = st.sidebar.slider("Window Length", 3, 51, 7, step=2)
     polyorder = st.sidebar.slider("Polynomial Order", 1, 5, 3)
 
     # Display options
     st.sidebar.header("Display Options")
-    show_ok = st.sidebar.checkbox("Show OK Welds (ZIP 1)", value=True)
-    show_test = st.sidebar.checkbox("Show Test Welds (ZIP 2)", value=True)
+    show_zip1 = st.sidebar.checkbox("Show ZIP Defocusing Data", value=True)
+    show_zip2 = st.sidebar.checkbox("Show ZIP GAP Data", value=True)
+    show_zip3 = st.sidebar.checkbox("Show ZIP OK Data", value=True)
     show_raw = st.sidebar.checkbox("Show Raw Signal", value=True)
     show_filtered = st.sidebar.checkbox("Show Filtered Signal", value=True)
 
-    # Apply filtering to stored segmented signals
-    ok_beads = defaultdict(list)
-    for bead_num, records in st.session_state["ok_beads_raw"].items():
-        for fname, signal in records:
-            smoothed = apply_savitzky_golay(signal, window_length, polyorder)
-            ok_beads[bead_num].append((fname, signal, smoothed))
+    # Apply filter to raw beads
+    def filter_beads(beads_raw):
+        beads_filtered = defaultdict(list)
+        for bead_num, records in beads_raw.items():
+            for fname, signal in records:
+                smoothed = apply_savitzky_golay(signal, window_length, polyorder)
+                beads_filtered[bead_num].append((fname, signal, smoothed))
+        return beads_filtered
 
-    test_beads = defaultdict(list)
-    for bead_num, records in st.session_state["test_beads_raw"].items():
-        for fname, signal in records:
-            smoothed = apply_savitzky_golay(signal, window_length, polyorder)
-            test_beads[bead_num].append((fname, signal, smoothed))
+    zip1_beads = filter_beads(st.session_state["zip1_beads_raw"])
+    zip2_beads = filter_beads(st.session_state["zip2_beads_raw"])
+    zip3_beads = filter_beads(st.session_state["zip3_beads_raw"])
 
-    all_beads = sorted(set(ok_beads.keys()).union(test_beads.keys()))
+    all_beads = sorted(set(zip1_beads.keys()) | set(zip2_beads.keys()) | set(zip3_beads.keys()))
     st.markdown("### Filtered Signal Visualization")
     selected_bead = st.selectbox("Select Bead Number to Display", all_beads)
 
     fig = go.Figure()
 
-    if show_ok and selected_bead in ok_beads:
-        for fname, raw_signal, smoothed_signal in ok_beads[selected_bead]:
+    if show_zip1 and selected_bead in zip1_beads:
+        for fname, raw_signal, smoothed_signal in zip1_beads[selected_bead]:
             if show_raw:
-                fig.add_trace(go.Scatter(
-                    y=raw_signal,
-                    mode='lines',
-                    name=f"Raw OK: {fname}",
-                    line=dict(color='gray', width=1)
-                ))
+                fig.add_trace(go.Scatter(y=raw_signal, mode='lines', name=f"Raw ZIP1: {fname}", line=dict(color='gray', width=1)))
             if show_filtered:
-                fig.add_trace(go.Scatter(
-                    y=smoothed_signal,
-                    mode='lines',
-                    name=f"Smoothed 1: {fname}",
-                    line=dict(color='blue', width=2)
-                ))
+                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP1: {fname}", line=dict(color='blue', width=2)))
 
-    if show_test and selected_bead in test_beads:
-        for fname, raw_signal, smoothed_signal in test_beads[selected_bead]:
+    if show_zip2 and selected_bead in zip2_beads:
+        for fname, raw_signal, smoothed_signal in zip2_beads[selected_bead]:
             if show_raw:
-                fig.add_trace(go.Scatter(
-                    y=raw_signal,
-                    mode='lines',
-                    name=f"Raw Test: {fname}",
-                    line=dict(color='lightgray', width=1)
-                ))
+                fig.add_trace(go.Scatter(y=raw_signal, mode='lines', name=f"Raw ZIP2: {fname}", line=dict(color='lightgray', width=1)))
             if show_filtered:
-                fig.add_trace(go.Scatter(
-                    y=smoothed_signal,
-                    mode='lines',
-                    name=f"Smoothed 2: {fname}",
-                    line=dict(color='red', width=2)
-                ))
+                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP2: {fname}", line=dict(color='red', width=2)))
+
+    if show_zip3 and selected_bead in zip3_beads:
+        for fname, raw_signal, smoothed_signal in zip3_beads[selected_bead]:
+            if show_raw:
+                fig.add_trace(go.Scatter(y=raw_signal, mode='lines', name=f"Raw ZIP3: {fname}", line=dict(color='darkgray', width=1)))
+            if show_filtered:
+                fig.add_trace(go.Scatter(y=smoothed_signal, mode='lines', name=f"Filtered ZIP3: {fname}", line=dict(color='green', width=2)))
 
     if not fig.data:
         st.warning("No data to display. Please check your display options.")
