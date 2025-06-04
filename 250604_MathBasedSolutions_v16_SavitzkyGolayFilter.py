@@ -49,9 +49,10 @@ st.set_page_config(layout="wide")
 st.title("Savitzky-Golay Filter Exploration")
 
 st.sidebar.header("Upload Data")
-ok_zip = st.sidebar.file_uploader("ZIP file with ONLY OK welds", type="zip")
-test_zip = st.sidebar.file_uploader("ZIP file to Test", type="zip")
+ok_zip = st.sidebar.file_uploader("ZIP file 1", type="zip")
+test_zip = st.sidebar.file_uploader("ZIP file 2", type="zip")
 
+# Sidebar preprocessing options
 if ok_zip and test_zip:
     with zipfile.ZipFile(ok_zip, 'r') as zip_ref:
         sample_csv_name = [name for name in zip_ref.namelist() if name.endswith('.csv')][0]
@@ -62,16 +63,6 @@ if ok_zip and test_zip:
     filter_column = st.sidebar.selectbox("Select column for segmentation", columns)
     threshold = st.sidebar.number_input("Segmentation threshold", value=0.0)
     signal_column = st.sidebar.selectbox("Select signal column for analysis", columns)
-
-    window_length = st.sidebar.slider("Savitzky-Golay Window Length", 3, 51, 7, step=2)
-    polyorder = st.sidebar.slider("Savitzky-Golay Polynomial Order", 1, 5, 3)
-
-    # Display filters
-    st.sidebar.header("Display Options")
-    show_ok = st.sidebar.checkbox("Show OK Welds (ZIP 1)", value=True)
-    show_test = st.sidebar.checkbox("Show Test Welds (ZIP 2)", value=True)
-    show_raw = st.sidebar.checkbox("Show Raw Signal", value=True)
-    show_filtered = st.sidebar.checkbox("Show Filtered Signal", value=True)
 
     if st.sidebar.button("Segment Beads"):
         with open("ok.zip", "wb") as f:
@@ -89,24 +80,41 @@ if ok_zip and test_zip:
                 segments = segment_beads(df, filter_column, threshold)
                 for bead_num, (start, end) in enumerate(segments, start=1):
                     signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
-                    smoothed_signal = apply_savitzky_golay(signal, window_length, polyorder)
-                    bead_data[bead_num].append((os.path.basename(file), signal, smoothed_signal))
+                    bead_data[bead_num].append((os.path.basename(file), signal))
             return bead_data
 
-        ok_beads = process_files(ok_files)
-        test_beads = process_files(test_files)
-
-        st.session_state["ok_beads"] = ok_beads
-        st.session_state["test_beads"] = test_beads
-
+        st.session_state["ok_beads_raw"] = process_files(ok_files)
+        st.session_state["test_beads_raw"] = process_files(test_files)
         st.success("✅ Bead segmentation completed.")
 
-# --- Visualization ---
-if "ok_beads" in st.session_state and "test_beads" in st.session_state:
-    ok_beads = st.session_state["ok_beads"]
-    test_beads = st.session_state["test_beads"]
-    all_beads = sorted(set(ok_beads.keys()).union(test_beads.keys()))
+# --- Post-segmentation logic ---
+if "ok_beads_raw" in st.session_state and "test_beads_raw" in st.session_state:
+    st.sidebar.header("Savitzky-Golay Filtering")
 
+    window_length = st.sidebar.slider("Window Length", 3, 51, 7, step=2)
+    polyorder = st.sidebar.slider("Polynomial Order", 1, 5, 3)
+
+    # Display options
+    st.sidebar.header("Display Options")
+    show_ok = st.sidebar.checkbox("Show OK Welds (ZIP 1)", value=True)
+    show_test = st.sidebar.checkbox("Show Test Welds (ZIP 2)", value=True)
+    show_raw = st.sidebar.checkbox("Show Raw Signal", value=True)
+    show_filtered = st.sidebar.checkbox("Show Filtered Signal", value=True)
+
+    # Apply filtering to stored segmented signals
+    ok_beads = defaultdict(list)
+    for bead_num, records in st.session_state["ok_beads_raw"].items():
+        for fname, signal in records:
+            smoothed = apply_savitzky_golay(signal, window_length, polyorder)
+            ok_beads[bead_num].append((fname, signal, smoothed))
+
+    test_beads = defaultdict(list)
+    for bead_num, records in st.session_state["test_beads_raw"].items():
+        for fname, signal in records:
+            smoothed = apply_savitzky_golay(signal, window_length, polyorder)
+            test_beads[bead_num].append((fname, signal, smoothed))
+
+    all_beads = sorted(set(ok_beads.keys()).union(test_beads.keys()))
     st.markdown("### Filtered Signal Visualization")
     selected_bead = st.selectbox("Select Bead Number to Display", all_beads)
 
