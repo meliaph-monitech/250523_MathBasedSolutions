@@ -186,7 +186,8 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
         "Welding Result": ["NOK" if fname in nok_files else "OK" for fname in all_files]
     })
 
+    st.dataframe(final_summary)
     st.markdown("### Drop Summary Table")
     st.dataframe(pd.DataFrame(drop_summary))
     
-    st.dataframe(final_summary)
+    
