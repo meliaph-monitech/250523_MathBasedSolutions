@@ -115,18 +115,21 @@ if ok_zip and test_zip:
             generate_heatmap(test_beads, "Bead Lengths in Test ZIP")
 
 if "ok_beads" in st.session_state and "test_beads" in st.session_state:
+    st.session_state["analysis_ready"] = True
+
+if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     ok_beads = st.session_state["ok_beads"]
     test_beads = st.session_state["test_beads"]
 
     # --- Sidebar Controls ---
     st.sidebar.markdown("### Lower (Dip) Detection Settings")
-    drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 11.0, 0.5)
-    min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 0.1, 0.1)
-    min_duration = st.sidebar.slider("Minimum Duration for Drop (consecutive points)", 10, 200, 25, 5)
+drop_margin = st.sidebar.number_input("Drop Margin (% below baseline)", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
+min_drop_percent = st.sidebar.number_input("Min % of points to consider as drop", min_value=0.0, max_value=100.0, value=10.0, step=0.1)
+min_duration = st.sidebar.number_input("Minimum Duration for Drop (consecutive points)", min_value=1, max_value=1000, value=10, step=1)
 
     st.sidebar.markdown("### Upper (Rise) Detection Settings")
-    rise_margin = st.sidebar.slider("Rise Margin (% above baseline)", 1.0, 50.0, 40.0, 0.5)
-    min_rise_percent = st.sidebar.slider("Min % of points to consider as rise", 0.1, 50.0, 0.1, 0.1)
-    max_rise_percent = st.sidebar.slider("Max % of points to consider as rise", 10.0, 100.0, 10.0, 0.5)
-    min_rise_duration = st.sidebar.slider("Minimum Duration for Rise (consecutive points)", 10, 200, 30, 5)
-    max_rise_duration = st.sidebar.slider("Maximum Duration for Rise (consecutive points)", 10, 200, 50, 5)
+rise_margin = st.sidebar.number_input("Rise Margin (% above baseline)", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
+min_rise_percent = st.sidebar.number_input("Min % of points to consider as rise", min_value=0.0, max_value=100.0, value=10.0, step=0.1)
+max_rise_percent = st.sidebar.number_input("Max % of points to consider as rise", min_value=0.0, max_value=100.0, value=100.0, step=0.5)
+min_rise_duration = st.sidebar.number_input("Minimum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=10, step=1)
+max_rise_duration = st.sidebar.number_input("Maximum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=200, step=1)
