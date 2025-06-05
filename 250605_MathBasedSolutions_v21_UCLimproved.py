@@ -5,7 +5,6 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from collections import defaultdict
-from scipy.stats import trim_mean
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -82,6 +81,7 @@ if ok_zip and test_zip:
         test_beads = process_files(test_files)
         st.session_state["ok_beads"] = ok_beads
         st.session_state["test_beads"] = test_beads
+        st.session_state["analysis_ready"] = True
         st.success("✅ Bead segmentation completed.")
 
         def generate_heatmap(bead_data, title):
@@ -114,24 +114,129 @@ if ok_zip and test_zip:
         with col2:
             generate_heatmap(test_beads, "Bead Lengths in Test ZIP")
 
-if "ok_beads" in st.session_state and "test_beads" in st.session_state:
-    st.session_state["analysis_ready"] = True
-
 if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     ok_beads = st.session_state["ok_beads"]
     test_beads = st.session_state["test_beads"]
-    ok_beads = st.session_state["ok_beads"]
-    test_beads = st.session_state["test_beads"]
 
-    # --- Sidebar Controls ---
     st.sidebar.markdown("### Lower (Dip) Detection Settings")
     drop_margin = st.sidebar.number_input("Drop Margin (% below baseline)", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
     min_drop_percent = st.sidebar.number_input("Min % of points to consider as drop", min_value=0.0, max_value=100.0, value=10.0, step=0.1)
     min_duration = st.sidebar.number_input("Minimum Duration for Drop (consecutive points)", min_value=1, max_value=1000, value=10, step=1)
 
-            st.sidebar.markdown("### Upper (Rise) Detection Settings")
+    st.sidebar.markdown("### Upper (Rise) Detection Settings")
     rise_margin = st.sidebar.number_input("Rise Margin (% above baseline)", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
     min_rise_percent = st.sidebar.number_input("Min % of points to consider as rise", min_value=0.0, max_value=100.0, value=10.0, step=0.1)
     max_rise_percent = st.sidebar.number_input("Max % of points to consider as rise", min_value=0.0, max_value=100.0, value=100.0, step=0.5)
     min_rise_duration = st.sidebar.number_input("Minimum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=10, step=1)
     max_rise_duration = st.sidebar.number_input("Maximum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=200, step=1)
+
+    selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
+
+    drop_nok_files = defaultdict(list)
+    rise_nok_files = defaultdict(list)
+    drop_summary = []
+    rise_summary = []
+    beadwise_baselines = {}
+
+    for bead_num in sorted(test_beads.keys()):
+        ok_signals = [sig[:min(len(s) for _, s in ok_beads[bead_num])] for _, sig in ok_beads.get(bead_num, []) if bead_num in ok_beads]
+        if not ok_signals:
+            continue
+        ok_matrix = np.vstack(ok_signals)
+        baseline = np.median(ok_matrix, axis=0)
+        lower_line = baseline * (1 - drop_margin / 100)
+        upper_line = baseline * (1 + rise_margin / 100)
+        beadwise_baselines[bead_num] = (lower_line, upper_line)
+
+        for fname, sig in test_beads[bead_num]:
+            min_len = min(len(sig), len(lower_line), len(upper_line))
+            sig = sig[:min_len]
+            lower = lower_line[:min_len]
+            upper = upper_line[:min_len]
+
+            below = sig < lower
+            above = sig > upper
+
+            # Drop detection
+            consecutive_drops = 0
+            for i in range(1, len(below)):
+                if below[i] and below[i - 1]:
+                    consecutive_drops += 1
+                else:
+                    consecutive_drops = 0
+                if consecutive_drops >= min_duration:
+                    break
+            percent_below = 100 * np.sum(below) / len(sig)
+            drop_triggered = percent_below >= min_drop_percent and consecutive_drops >= min_duration
+            if drop_triggered:
+                drop_nok_files[fname].append(bead_num)
+            if bead_num == selected_bead:
+                drop_summary.append({"File": fname, "Bead": bead_num, "% Below": round(percent_below, 2), "NOK": drop_triggered})
+
+            # Rise detection
+            consecutive_rises = 0
+            for i in range(1, len(above)):
+                if above[i] and above[i - 1]:
+                    consecutive_rises += 1
+                else:
+                    consecutive_rises = 0
+                if consecutive_rises >= min_rise_duration:
+                    break
+            percent_above = 100 * np.sum(above) / len(sig)
+            rise_triggered = (min_rise_percent <= percent_above <= max_rise_percent and min_rise_duration <= consecutive_rises <= max_rise_duration)
+            if rise_triggered:
+                rise_nok_files[fname].append(bead_num)
+            if bead_num == selected_bead:
+                rise_summary.append({"File": fname, "Bead": bead_num, "% Above": round(percent_above, 2), "NOK": rise_triggered})
+
+    # Plotting
+    fig = go.Figure()
+    lower_line, upper_line = beadwise_baselines.get(selected_bead)
+    for fname, sig in ok_beads.get(selected_bead, []):
+        sig = sig[:min(len(s) for _, s in ok_beads[selected_bead])]
+        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
+
+    for fname, sig in test_beads.get(selected_bead, []):
+        min_len = min(len(sig), len(lower_line), len(upper_line))
+        sig = sig[:min_len]
+        triggered_drop = fname in drop_nok_files and selected_bead in drop_nok_files[fname]
+        triggered_rise = fname in rise_nok_files and selected_bead in rise_nok_files[fname]
+        if triggered_drop and triggered_rise:
+            color = 'purple'
+        elif triggered_drop:
+            color = 'red'
+        elif triggered_rise:
+            color = 'orange'
+        else:
+            color = 'black'
+        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
+
+    fig.add_trace(go.Scatter(y=lower_line[:min_len], mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
+    fig.add_trace(go.Scatter(y=upper_line[:min_len], mode='lines', name='Upper Reference', line=dict(color='blue', dash='dash')))
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Final Summary
+    all_files = sorted({fname for bead_entries in test_beads.values() for fname, _ in bead_entries})
+    final_summary = []
+    for fname in all_files:
+        drop_beads = drop_nok_files.get(fname, [])
+        rise_beads = rise_nok_files.get(fname, [])
+        all_nok_beads = sorted(set(drop_beads + rise_beads))
+        final_summary.append({
+            "File Name": fname,
+            "NOK Beads": ", ".join(map(str, all_nok_beads)),
+            "Welding Result": "NOK" if all_nok_beads else "OK",
+            "Upper NOK": ", ".join(map(str, sorted(set(rise_beads) - set(drop_beads)))),
+            "Lower NOK": ", ".join(map(str, sorted(set(drop_beads) - set(rise_beads)))),
+            "Both NOK": ", ".join(map(str, sorted(set(drop_beads) & set(rise_beads))))
+        })
+
+    st.markdown("### Final Welding Result Summary")
+    st.dataframe(pd.DataFrame(final_summary))
+
+    st.markdown("### Drop Summary Table")
+    st.dataframe(pd.DataFrame(drop_summary))
+
+    st.markdown("### Rise Summary Table")
+    st.dataframe(pd.DataFrame(rise_summary))
+    # You can now safely add drop and rise detection, line coloring, and tables
