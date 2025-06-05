@@ -126,9 +126,9 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.se
     st.sidebar.markdown("### Upper (Rise) Detection Settings")
     rise_margin = st.sidebar.number_input("Rise Margin (% above baseline)", min_value=0.0, max_value=100.0, value=40.0, step=0.5)
     min_rise_percent = st.sidebar.number_input("Min % of points to consider as rise", min_value=0.0, max_value=100.0, value=0.1, step=0.1)
-    max_rise_percent = st.sidebar.number_input("Max % of points to consider as rise", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
-    min_rise_duration = st.sidebar.number_input("Minimum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=10, step=1)
-    max_rise_duration = st.sidebar.number_input("Maximum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=40, step=1)
+    max_rise_percent = st.sidebar.number_input("Max % of points to consider as rise", min_value=0.0, max_value=100.0, value=3.0, step=0.5)
+    min_rise_duration = st.sidebar.number_input("Minimum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=15, step=1)
+    max_rise_duration = st.sidebar.number_input("Maximum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=20, step=1)
 
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
 
