@@ -120,13 +120,13 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
 
     # --- Sidebar Controls ---
     st.sidebar.markdown("### Lower (Dip) Detection Settings")
-    drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 10.0, 0.5)
-    min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 10.0, 0.1)
-    min_duration = st.sidebar.slider("Minimum Duration for Drop (consecutive points)", 10, 200, 10, 5)
+    drop_margin = st.sidebar.slider("Drop Margin (% below baseline)", 1.0, 50.0, 11.0, 0.5)
+    min_drop_percent = st.sidebar.slider("Min % of points to consider as drop", 0.1, 50.0, 0.1, 0.1)
+    min_duration = st.sidebar.slider("Minimum Duration for Drop (consecutive points)", 10, 200, 25, 5)
 
     st.sidebar.markdown("### Upper (Rise) Detection Settings")
-    rise_margin = st.sidebar.slider("Rise Margin (% above baseline)", 1.0, 50.0, 10.0, 0.5)
-    min_rise_percent = st.sidebar.slider("Min % of points to consider as rise", 0.1, 50.0, 10.0, 0.1)
-    max_rise_percent = st.sidebar.slider("Max % of points to consider as rise", 10.0, 100.0, 100.0, 0.5)
-    min_rise_duration = st.sidebar.slider("Minimum Duration for Rise (consecutive points)", 10, 200, 10, 5)
-    max_rise_duration = st.sidebar.slider("Maximum Duration for Rise (consecutive points)", 10, 200, 200, 5)
+    rise_margin = st.sidebar.slider("Rise Margin (% above baseline)", 1.0, 50.0, 40.0, 0.5)
+    min_rise_percent = st.sidebar.slider("Min % of points to consider as rise", 0.1, 50.0, 0.1, 0.1)
+    max_rise_percent = st.sidebar.slider("Max % of points to consider as rise", 10.0, 100.0, 10.0, 0.5)
+    min_rise_duration = st.sidebar.slider("Minimum Duration for Rise (consecutive points)", 10, 200, 30, 5)
+    max_rise_duration = st.sidebar.slider("Maximum Duration for Rise (consecutive points)", 10, 200, 50, 5)
