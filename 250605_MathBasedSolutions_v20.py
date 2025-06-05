@@ -221,9 +221,9 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
             "File Name": fname,
             "NOK Beads": ", ".join(map(str, all_nok_beads)),
             "Welding Result": "NOK" if all_nok_beads else "OK",
-            "Upper NOK": bool(rise_beads and not drop_beads),
-            "Lower NOK": bool(drop_beads and not rise_beads),
-            "Both NOK": bool(drop_beads and rise_beads)
+            "Upper NOK": ", ".join(map(str, sorted(set(rise_beads) - set(drop_beads)))),
+            "Lower NOK": ", ".join(map(str, sorted(set(drop_beads) - set(rise_beads)))),
+            "Both NOK": ", ".join(map(str, sorted(set(drop_beads) & set(rise_beads))))
         })
 
     st.markdown("### Final Welding Result Summary")
