@@ -41,7 +41,7 @@ def segment_beads(df, column, threshold):
 
 # --- App Setup ---
 st.set_page_config(layout="wide")
-st.title("Dip and Rise Valley Detector Using OK Reference")
+st.title("Dip Valley and Rise Peak Detector V21")
 
 st.sidebar.header("Upload Data")
 ok_zip = st.sidebar.file_uploader("ZIP file with ONLY OK welds", type="zip")
