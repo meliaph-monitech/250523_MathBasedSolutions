@@ -156,7 +156,6 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
             below = sig < lower
             above = sig > upper
 
-            # Drop detection
             consecutive_drops = 0
             for i in range(1, len(below)):
                 if below[i] and below[i - 1]:
@@ -172,7 +171,6 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
             if bead_num == selected_bead:
                 drop_summary.append({"File": fname, "Bead": bead_num, "% Below": round(percent_below, 2), "NOK": drop_triggered})
 
-            # Rise detection
             consecutive_rises = 0
             for i in range(1, len(above)):
                 if above[i] and above[i - 1]:
@@ -188,7 +186,6 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
             if bead_num == selected_bead:
                 rise_summary.append({"File": fname, "Bead": bead_num, "% Above": round(percent_above, 2), "NOK": rise_triggered})
 
-    # --- Plot for Selected Bead ---
     fig = go.Figure()
     lower_line, upper_line = beadwise_baselines.get(selected_bead)
     for fname, sig in ok_beads.get(selected_bead, []):
@@ -214,25 +211,19 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state:
     fig.add_trace(go.Scatter(y=upper_line[:min_len], mode='lines', name='Upper Reference', line=dict(color='blue', dash='dash')))
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Final Welding Result Summary ---
     all_files = sorted({fname for bead_entries in test_beads.values() for fname, _ in bead_entries})
     final_summary = []
     for fname in all_files:
         drop_beads = drop_nok_files.get(fname, [])
         rise_beads = rise_nok_files.get(fname, [])
         all_nok_beads = sorted(set(drop_beads + rise_beads))
-        reason = ""
-        if drop_beads and rise_beads:
-            reason = "Both"
-        elif drop_beads:
-            reason = "Lower"
-        elif rise_beads:
-            reason = "Upper"
         final_summary.append({
             "File Name": fname,
             "NOK Beads": ", ".join(map(str, all_nok_beads)),
             "Welding Result": "NOK" if all_nok_beads else "OK",
-            "NOK Reason": reason
+            "Upper NOK": bool(rise_beads and not drop_beads),
+            "Lower NOK": bool(drop_beads and not rise_beads),
+            "Both NOK": bool(drop_beads and rise_beads)
         })
 
     st.markdown("### Final Welding Result Summary")
