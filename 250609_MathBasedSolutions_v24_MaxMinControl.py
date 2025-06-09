@@ -1,3 +1,4 @@
+# --- unchanged imports ---
 import streamlit as st
 import zipfile
 import os
@@ -8,7 +9,7 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# --- File Extraction ---
+# --- unchanged functions ---
 def extract_zip(uploaded_file, extract_dir):
     if os.path.exists(extract_dir):
         for file in os.listdir(extract_dir):
@@ -21,7 +22,6 @@ def extract_zip(uploaded_file, extract_dir):
 
     return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
 
-# --- Bead Segmentation ---
 def segment_beads(df, column, threshold):
     start_indices = []
     end_indices = []
@@ -39,7 +39,7 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-# --- App Setup ---
+# --- unchanged app setup ---
 st.set_page_config(layout="wide")
 st.title("Dip Valley and Rise Peak Detector V21")
 
@@ -114,24 +114,31 @@ if ok_zip and test_zip:
         with col2:
             generate_heatmap(test_beads, "Bead Lengths in Test ZIP")
 
-# (previous code unchanged...)
 if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     ok_beads = st.session_state["ok_beads"]
     test_beads = st.session_state["test_beads"]
 
     st.sidebar.markdown("### Lower (Dip) Detection Settings")
-    drop_margin = st.sidebar.number_input("Drop Margin (% below baseline)", min_value=0.0, max_value=100.0, value=11.0, step=0.5)
-    min_drop_percent = st.sidebar.number_input("Min % of points to consider as drop", min_value=0.0, max_value=100.0, value=0.1, step=0.1)
-    max_drop_percent = st.sidebar.number_input("Max % of points to consider as drop", min_value=0.0, max_value=100.0, value=3.0, step=0.5)
-    min_duration = st.sidebar.number_input("Minimum Duration for Drop (consecutive points)", min_value=1, max_value=1000, value=25, step=1)
-    max_duration = st.sidebar.number_input("Maximum Duration for Drop (consecutive points)", min_value=1, max_value=1000, value=100, step=1)
+    drop_margin = st.sidebar.number_input("Drop Margin (% below baseline)", 0.0, 100.0, 11.0, 0.5)
+    min_drop_percent = st.sidebar.number_input("Min % of points to consider as drop", 0.0, 100.0, 0.1, 0.1)
+    
+    use_max_drop_percent = st.sidebar.checkbox("Apply Max % for Drop", value=True)
+    max_drop_percent = st.sidebar.number_input("Max % of points to consider as drop", 0.0, 100.0, 3.0, 0.5) if use_max_drop_percent else float('inf')
+
+    min_duration = st.sidebar.number_input("Minimum Duration for Drop (consecutive points)", 1, 1000, 25, 1)
+    max_duration = st.sidebar.number_input("Maximum Duration for Drop (consecutive points)", 1, 1000, 1000, 1)
 
     st.sidebar.markdown("### Upper (Rise) Detection Settings")
-    rise_margin = st.sidebar.number_input("Rise Margin (% above baseline)", min_value=0.0, max_value=100.0, value=40.0, step=0.5)
-    min_rise_percent = st.sidebar.number_input("Min % of points to consider as rise", min_value=0.0, max_value=100.0, value=0.1, step=0.1)
-    max_rise_percent = st.sidebar.number_input("Max % of points to consider as rise", min_value=0.0, max_value=100.0, value=3.0, step=0.5)
-    min_rise_duration = st.sidebar.number_input("Minimum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=15, step=1)
-    max_rise_duration = st.sidebar.number_input("Maximum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=20, step=1)
+    rise_margin = st.sidebar.number_input("Rise Margin (% above baseline)", 0.0, 100.0, 40.0, 0.5)
+
+    use_min_rise_percent = st.sidebar.checkbox("Apply Min % for Rise", value=True)
+    min_rise_percent = st.sidebar.number_input("Min % of points to consider as rise", 0.0, 100.0, 0.1, 0.1) if use_min_rise_percent else 0.0
+
+    use_max_rise_percent = st.sidebar.checkbox("Apply Max % for Rise", value=True)
+    max_rise_percent = st.sidebar.number_input("Max % of points to consider as rise", 0.0, 100.0, 3.0, 0.5) if use_max_rise_percent else float('inf')
+
+    min_rise_duration = st.sidebar.number_input("Minimum Duration for Rise (consecutive points)", 1, 1000, 15, 1)
+    max_rise_duration = st.sidebar.number_input("Maximum Duration for Rise (consecutive points)", 1, 1000, 20, 1)
 
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
 
@@ -170,7 +177,10 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.se
                     consecutive_drops = 0
                 max_consecutive_drops = max(max_consecutive_drops, consecutive_drops)
             percent_below = 100 * np.sum(below) / len(sig)
-            drop_triggered = (min_drop_percent <= percent_below <= max_drop_percent) and (min_duration <= max_consecutive_drops <= max_duration)
+            drop_triggered = (
+                min_drop_percent <= percent_below <= max_drop_percent and
+                min_duration <= max_consecutive_drops <= max_duration
+            )
             if drop_triggered:
                 drop_nok_files[fname].append(bead_num)
             if bead_num == selected_bead:
@@ -178,21 +188,23 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.se
 
             # Rise detection
             consecutive_rises = 0
+            max_consecutive_rises = 0
             for i in range(1, len(above)):
                 if above[i] and above[i - 1]:
                     consecutive_rises += 1
                 else:
                     consecutive_rises = 0
-                if consecutive_rises >= min_rise_duration:
-                    break
+                max_consecutive_rises = max(max_consecutive_rises, consecutive_rises)
             percent_above = 100 * np.sum(above) / len(sig)
-            rise_triggered = (min_rise_percent <= percent_above <= max_rise_percent and min_rise_duration <= consecutive_rises <= max_rise_duration)
+            rise_triggered = (
+                min_rise_percent <= percent_above <= max_rise_percent and
+                min_rise_duration <= max_consecutive_rises <= max_rise_duration
+            )
             if rise_triggered:
                 rise_nok_files[fname].append(bead_num)
             if bead_num == selected_bead:
                 rise_summary.append({"File": fname, "Bead": bead_num, "% Above": round(percent_above, 2), "NOK": rise_triggered})
 
-    # (rest of the code unchanged...)
     # Plotting
     fig = go.Figure()
     lower_line, upper_line = beadwise_baselines.get(selected_bead)
@@ -243,4 +255,3 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.se
 
     st.markdown("### Rise Summary Table")
     st.dataframe(pd.DataFrame(rise_summary))
-    # You can now safely add drop and rise detection, line coloring, and tables
