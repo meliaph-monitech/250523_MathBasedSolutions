@@ -94,7 +94,7 @@ if zip1 and zip2 and zip3:
 # --- Filtering and Display ---
 if all(k in st.session_state for k in ["zip1_beads_raw", "zip2_beads_raw", "zip3_beads_raw"]):
     st.sidebar.header("Savitzky-Golay Filtering")
-    window_length = st.sidebar.slider("Window Length", 3, 51, 7, step=2)
+    window_length = st.sidebar.slider("Window Length", 3, 101, 7, step=2)
     polyorder = st.sidebar.slider("Polynomial Order", 1, 5, 3)
 
     # Display options
