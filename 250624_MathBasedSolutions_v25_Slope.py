@@ -92,9 +92,6 @@ def generate_heatmap(bead_data, title):
 st.set_page_config(layout="wide")
 st.title("Slope-Based Signal Anomaly Detector")
 
-st.markdown("### Bead Length Heatmap")
-generate_heatmap(bead_data, "Bead Lengths per File")
-
 uploaded_zip = st.sidebar.file_uploader("Upload ZIP file with test signals", type="zip")
 
 if uploaded_zip:
@@ -116,6 +113,9 @@ if uploaded_zip:
         bead_data = process_files(extracted_files, filter_column, threshold, signal_column)
         st.session_state["bead_data"] = bead_data
         st.session_state["analysis_ready"] = True
+
+    st.markdown("### Bead Length Heatmap")
+    generate_heatmap(st.session_state["bead_data"], "Bead Lengths per File")
 
 if "bead_data" in st.session_state and st.session_state.get("analysis_ready", False):
     bead_data = st.session_state["bead_data"]
@@ -150,6 +150,9 @@ if "bead_data" in st.session_state and st.session_state.get("analysis_ready", Fa
         fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} | slope={slope:.4f}", line=dict(color=color)))
 
     st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### Bead Length Heatmap")
+    generate_heatmap(bead_data, "Bead Lengths per File")
 
     st.markdown("### Slope Statistics for All Beads")
     st.dataframe(pd.DataFrame(all_summary))
