@@ -146,11 +146,10 @@ if "bead_data" in st.session_state and st.session_state.get("analysis_ready", Fa
         color = 'red' if is_nok else 'black'
         fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} | slope={slope:.4f}", line=dict(color=color)))
 
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.plotly_chart(fig, use_container_width=True)
-    with col2:
-        generate_heatmap(bead_data, "Bead Lengths per File")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### Bead Length Heatmap")
+    generate_heatmap(bead_data, "Bead Lengths per File")
 
     st.markdown("### Slope Statistics for All Beads")
     st.dataframe(pd.DataFrame(all_summary))
