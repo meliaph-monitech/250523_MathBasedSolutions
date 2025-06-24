@@ -6,8 +6,6 @@ import pandas as pd
 import numpy as np
 import streamlit as st
 import plotly.graph_objects as go
-import matplotlib.pyplot as plt
-import seaborn as sns
 from collections import defaultdict
 
 # --- File Extraction ---
@@ -65,10 +63,10 @@ def calculate_slope(signal, window_size, interval):
     return min(slopes), max(slopes), np.mean(slopes) if slopes else (0, 0, 0)
 
 # --- Heatmap Generator ---
-def generate_heatmap(bead_data, title):
-    bead_lengths = defaultdict(lambda: defaultdict(int))
-    bead_nums = set()
-    file_names = set()
+def generate_bead_plot_and_stats(bead_data, slope_window, slope_interval, slope_threshold):
+    slope_stats = defaultdict(list)
+    all_summary = []
+
     for bead_num, entries in bead_data.items():
         for fname, sig in entries:
             min_slope, max_slope, avg_slope = calculate_slope(sig, slope_window, slope_interval)
@@ -84,22 +82,48 @@ def generate_heatmap(bead_data, title):
                 "Interval": slope_interval,
                 "Threshold": slope_threshold,
                 "Result": "NOK" if is_nok else "OK",
-                "Reason": f"|max_slope| > {slope_threshold}"
+                "Reason": f"|max_slope| > {slope_threshold}" if is_nok else "OK"
             })
 
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(slope_stats.keys()))
-
     fig = go.Figure()
     for fname, sig in dict(bead_data[selected_bead]).items():
         _, max_slope, _ = calculate_slope(sig, slope_window, slope_interval)
         is_nok = abs(max_slope) > slope_threshold
         color = 'red' if is_nok else 'black'
-        fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} | max_slope={max_slope:.4f}", line=dict(color=color)))
-
+        fig.add_trace(go.Scatter(y=sig, mode='lines',
+                                 name=f"{fname} | max_slope={max_slope:.4f}",
+                                 line=dict(color=color)))
     st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("### Bead Length Heatmap")
-    generate_heatmap(bead_data, "Bead Lengths per File")
 
     st.markdown("### Slope Statistics for All Beads")
     st.dataframe(pd.DataFrame(all_summary))
+
+
+# --- Streamlit App Layout ---
+st.set_page_config(layout="wide")
+st.title("Slope-Based Signal Anomaly Detector")
+
+uploaded_file = st.file_uploader("Upload ZIP file containing CSVs", type='zip')
+
+slope_window = st.number_input("Slope Window Size", min_value=2, value=10)
+slope_interval = st.number_input("Slope Interval", min_value=1, value=5)
+slope_threshold = st.number_input("Slope Threshold", value=0.5)
+
+if uploaded_file:
+    extract_dir = "extracted_data"
+    csv_files = extract_zip(uploaded_file, extract_dir)
+
+    st.success(f"{len(csv_files)} CSV files extracted.")
+
+    filter_column = st.text_input("Bead Segmentation Column (e.g., LaserOn)", value="LaserOn")
+    signal_column = st.text_input("Signal Column (e.g., Signal)", value="Signal")
+    segment_threshold = st.number_input("Segmentation Threshold", value=0.5)
+
+    if st.button("Run Analysis"):
+        bead_data = process_files(csv_files, filter_column, segment_threshold, signal_column)
+
+        if not bead_data:
+            st.warning("No beads found. Check your segmentation column and threshold.")
+        else:
+            generate_bead_plot_and_stats(bead_data, slope_window, slope_interval, slope_threshold)
