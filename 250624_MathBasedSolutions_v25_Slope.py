@@ -97,6 +97,7 @@ def generate_heatmap(bead_data, title):
         fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} | max_slope={max_slope:.4f}", line=dict(color=color)))
 
 
+
     st.plotly_chart(fig, use_container_width=True)
 
     st.markdown("### Bead Length Heatmap")
