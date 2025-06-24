@@ -94,7 +94,8 @@ def generate_heatmap(bead_data, title):
         _, max_slope, _ = calculate_slope(sig, slope_window, slope_interval)
         is_nok = abs(max_slope) > slope_threshold
         color = 'red' if is_nok else 'black'
-        fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} | max_slope={max_slope:.4f}", line=dict(color=color))))
+        fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} | max_slope={max_slope:.4f}", line=dict(color=color)))
+
 
     st.plotly_chart(fig, use_container_width=True)
 
