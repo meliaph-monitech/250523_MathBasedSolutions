@@ -48,19 +48,16 @@ def process_files(files, filter_column, threshold, signal_column):
             bead_data[bead_num].append((os.path.basename(file), signal))
     return bead_data
 
-# --- Ascend Measurement ---
-def measure_ascending(signal):
+# --- Slope Calculation ---
+def calculate_slope(signal):
     x = np.arange(len(signal))
-    slope = np.polyfit(x, signal, 1)[0]
-    cumulative_rise = np.sum(np.maximum(0, np.diff(signal)))
-    net_rise = signal.iloc[-1] - signal.iloc[0]
-    return slope, cumulative_rise, net_rise
+    return np.polyfit(x, signal, 1)[0]
 
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
-st.title("Signal Ascent Level Analyzer")
+st.title("Slope-Based Signal Anomaly Detector")
 
-uploaded_zip = st.sidebar.file_uploader("Upload ZIP file with welding signals", type="zip")
+uploaded_zip = st.sidebar.file_uploader("Upload ZIP file with test signals", type="zip")
 
 if uploaded_zip:
     with zipfile.ZipFile(uploaded_zip, 'r') as zip_ref:
@@ -71,29 +68,39 @@ if uploaded_zip:
 
     filter_column = st.sidebar.selectbox("Column for segmentation", columns)
     threshold = st.sidebar.number_input("Segmentation threshold", value=0.0)
-    signal_column = st.sidebar.selectbox("Signal column for analysis", columns)
+    signal_column = st.sidebar.selectbox("Signal column for slope analysis", columns)
+    slope_threshold = st.sidebar.number_input("Max Allowed Slope (Threshold)", value=0.1, step=0.01)
 
-    if st.sidebar.button("Analyze"):
+    if st.sidebar.button("Run Slope Analysis"):
         with open("data.zip", "wb") as f:
             f.write(uploaded_zip.getbuffer())
 
-        extracted_files = extract_zip("data.zip", "asc_data")
+        extracted_files = extract_zip("data.zip", "slope_data")
         bead_data = process_files(extracted_files, filter_column, threshold, signal_column)
 
-        selected_bead = st.selectbox("Select Bead Number", sorted(bead_data.keys()))
-        table_data = []
+        selected_bead = st.selectbox("Select Bead Number to Display", sorted(bead_data.keys()))
+        slope_results = []
 
         fig = go.Figure()
         for fname, sig in bead_data[selected_bead]:
-            slope, cum_rise, net_rise = measure_ascending(sig)
-            table_data.append({
+            slope = calculate_slope(sig)
+            is_nok = abs(slope) > slope_threshold
+            color = "red" if is_nok else "black"
+
+            fig.add_trace(go.Scatter(
+                y=sig,
+                mode='lines',
+                name=f"{fname} | Slope={slope:.4f}",
+                line=dict(color=color, width=2)
+            ))
+
+            slope_results.append({
                 "File": fname,
+                "Bead": selected_bead,
                 "Slope": round(slope, 4),
-                "Cumulative Rise": round(cum_rise, 2),
-                "Net Rise": round(net_rise, 2)
+                "Result": "NOK" if is_nok else "OK"
             })
-            fig.add_trace(go.Scatter(y=sig, mode='lines', name=fname))
 
         st.plotly_chart(fig, use_container_width=True)
-        st.markdown("### Ascent Metrics Table")
-        st.dataframe(pd.DataFrame(table_data))
+        st.markdown("### Slope Evaluation Table")
+        st.dataframe(pd.DataFrame(slope_results))
