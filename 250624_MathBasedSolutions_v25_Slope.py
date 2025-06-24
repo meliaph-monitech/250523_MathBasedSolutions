@@ -1,3 +1,5 @@
+# Slope-Based Signal Anomaly Detector with session-aware state and threshold interactivity
+
 import os
 import zipfile
 import pandas as pd
@@ -51,9 +53,9 @@ def process_files(files, filter_column, threshold, signal_column):
 # --- Slope Calculation ---
 def calculate_slope(signal):
     x = np.arange(len(signal))
-    return np.polyfit(x, signal, 1)[0]
+    return np.polyfit(x, signal, 1)[0] if len(signal) > 1 else 0
 
-# --- Streamlit App ---
+# --- App UI Setup ---
 st.set_page_config(layout="wide")
 st.title("Slope-Based Signal Anomaly Detector")
 
@@ -69,38 +71,47 @@ if uploaded_zip:
     filter_column = st.sidebar.selectbox("Column for segmentation", columns)
     threshold = st.sidebar.number_input("Segmentation threshold", value=0.0)
     signal_column = st.sidebar.selectbox("Signal column for slope analysis", columns)
-    slope_threshold = st.sidebar.number_input("Max Allowed Slope (Threshold)", value=0.1, step=0.01)
 
-    if st.sidebar.button("Run Slope Analysis"):
+    if st.sidebar.button("Segment Beads"):
         with open("data.zip", "wb") as f:
             f.write(uploaded_zip.getbuffer())
 
         extracted_files = extract_zip("data.zip", "slope_data")
         bead_data = process_files(extracted_files, filter_column, threshold, signal_column)
+        st.session_state["bead_data"] = bead_data
+        st.session_state["analysis_ready"] = True
 
-        selected_bead = st.selectbox("Select Bead Number to Display", sorted(bead_data.keys()))
-        slope_results = []
+if "bead_data" in st.session_state and st.session_state.get("analysis_ready", False):
+    bead_data = st.session_state["bead_data"]
+    slope_threshold = st.sidebar.slider("Slope Threshold (absolute)", min_value=0.0, max_value=1.0, value=0.1, step=0.01)
 
-        fig = go.Figure()
-        for fname, sig in bead_data[selected_bead]:
+    all_summary = []
+    slope_stats = defaultdict(list)
+
+    for bead_num, entries in bead_data.items():
+        for fname, sig in entries:
             slope = calculate_slope(sig)
             is_nok = abs(slope) > slope_threshold
-            color = "red" if is_nok else "black"
-
-            fig.add_trace(go.Scatter(
-                y=sig,
-                mode='lines',
-                name=f"{fname} | Slope={slope:.4f}",
-                line=dict(color=color, width=2)
-            ))
-
-            slope_results.append({
+            slope_stats[bead_num].append((fname, slope, is_nok))
+            all_summary.append({
                 "File": fname,
-                "Bead": selected_bead,
+                "Bead": bead_num,
                 "Slope": round(slope, 4),
-                "Result": "NOK" if is_nok else "OK"
+                "Threshold": slope_threshold,
+                "Result": "NOK" if is_nok else "OK",
+                "Reason": f"|slope| > {slope_threshold}"
             })
 
-        st.plotly_chart(fig, use_container_width=True)
-        st.markdown("### Slope Evaluation Table")
-        st.dataframe(pd.DataFrame(slope_results))
+    selected_bead = st.selectbox("Select Bead Number to Display", sorted(slope_stats.keys()))
+
+    fig = go.Figure()
+    for fname, sig in dict(bead_data[selected_bead]).items():
+        slope = calculate_slope(sig)
+        is_nok = abs(slope) > slope_threshold
+        color = 'red' if is_nok else 'black'
+        fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} | slope={slope:.4f}", line=dict(color=color)))
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### Slope Statistics for All Beads")
+    st.dataframe(pd.DataFrame(all_summary))
