@@ -45,6 +45,7 @@ def analyze_trend_windows(signal: pd.Series, window_size: int, step_size: int, m
     signal = signal.dropna().reset_index(drop=True)
     total_windows = 0
     ascending_windows = 0
+    score_list = []
 
     for start in range(0, len(signal) - window_size + 1, step_size):
         window = signal[start:start + window_size]
@@ -63,6 +64,7 @@ def analyze_trend_windows(signal: pd.Series, window_size: int, step_size: int, m
         else:
             raise ValueError("Invalid metric")
 
+        score_list.append(score)
         if score > threshold:
             ascending_windows += 1
         total_windows += 1
@@ -72,7 +74,8 @@ def analyze_trend_windows(signal: pd.Series, window_size: int, step_size: int, m
     return {
         "total_windows": total_windows,
         "ascending_windows": ascending_windows,
-        "percent_ascending": percent_ascending
+        "percent_ascending": percent_ascending,
+        "score_list": score_list
     }
 
 # --- App Setup ---
@@ -167,13 +170,18 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
             line=dict(color=color, width=1.5)
         ))
 
+        score_stats = pd.Series(result["score_list"]).describe()
+
         final_summary.append({
             "File Name": fname,
             "Bead Number": selected_bead,
             "Total Windows": result["total_windows"],
             "Ascending Windows": result["ascending_windows"],
             "% Ascending": round(result["percent_ascending"], 2),
-            "Result": "NOK" if nok else "OK"
+            "Result": "NOK" if nok else "OK",
+            f"{metric} Max": round(score_stats["max"], 4),
+            f"{metric} Mean": round(score_stats["mean"], 4),
+            f"{metric} Min": round(score_stats["min"], 4)
         })
 
     st.plotly_chart(fig, use_container_width=True)
