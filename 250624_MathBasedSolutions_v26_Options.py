@@ -150,8 +150,10 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     window_size = st.sidebar.number_input("Window Size (points)", min_value=10, value=100, step=10)
     step_size = st.sidebar.number_input("Step Size (points)", min_value=1, value=20, step=1)
     metric = st.sidebar.selectbox("Trend Metric", ["Linear Regression Slope", "Delta", "Mean Gradient"])
-    threshold = st.sidebar.number_input("Trend Threshold", value=0.2, step=0.1)
-    max_percent_ascending = st.sidebar.number_input("Max % Ascending Windows Allowed", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
+    # threshold = st.sidebar.number_input("Trend Threshold", value=0.2, step=0.1)
+    # max_percent_ascending = st.sidebar.number_input("Max % Ascending Windows Allowed", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
+    threshold = float(st.sidebar.text_input("Trend Threshold (exact value)", value="0.20000"))
+    max_percent_ascending = float(st.sidebar.text_input("Max % Ascending Windows Allowed", value="10.00000"))
 
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.keys()))
 
