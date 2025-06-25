@@ -46,6 +46,7 @@ def analyze_trend_windows(signal: pd.Series, window_size: int, step_size: int, m
     total_windows = 0
     ascending_windows = 0
     score_list = []
+    exceed_windows = []
 
     for start in range(0, len(signal) - window_size + 1, step_size):
         window = signal[start:start + window_size]
@@ -67,6 +68,8 @@ def analyze_trend_windows(signal: pd.Series, window_size: int, step_size: int, m
         score_list.append(score)
         if score > threshold:
             ascending_windows += 1
+            exceed_windows.append((start, start + window_size - 1, score))
+
         total_windows += 1
 
     percent_ascending = (ascending_windows / total_windows) * 100 if total_windows > 0 else 0
@@ -75,7 +78,8 @@ def analyze_trend_windows(signal: pd.Series, window_size: int, step_size: int, m
         "total_windows": total_windows,
         "ascending_windows": ascending_windows,
         "percent_ascending": percent_ascending,
-        "score_list": score_list
+        "score_list": score_list,
+        "exceed_windows": exceed_windows
     }
 
 # --- App Setup ---
@@ -150,15 +154,15 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     window_size = st.sidebar.number_input("Window Size (points)", min_value=10, value=100, step=10)
     step_size = st.sidebar.number_input("Step Size (points)", min_value=1, value=20, step=1)
     metric = st.sidebar.selectbox("Trend Metric", ["Linear Regression Slope", "Delta", "Mean Gradient"])
-    # threshold = st.sidebar.number_input("Trend Threshold", value=0.2, step=0.1)
-    # max_percent_ascending = st.sidebar.number_input("Max % Ascending Windows Allowed", min_value=0.0, max_value=100.0, value=10.0, step=0.5)
     threshold = float(st.sidebar.text_input("Trend Threshold (exact value)", value="0.20000"))
     max_percent_ascending = float(st.sidebar.text_input("Max % Ascending Windows Allowed", value="10.00000"))
+    show_windows = st.sidebar.checkbox("Highlight Exceeding Windows", value=True)
 
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.keys()))
 
     final_summary = []
     fig = go.Figure()
+    score_fig = go.Figure()
 
     for fname, signal in test_beads[selected_bead]:
         result = analyze_trend_windows(signal, window_size, step_size, metric, threshold)
@@ -170,6 +174,33 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
             mode='lines',
             name=fname,
             line=dict(color=color, width=1.5)
+        ))
+
+        if show_windows:
+            for start, end, score in result["exceed_windows"]:
+                fig.add_shape(
+                    type="rect",
+                    x0=start, x1=end,
+                    y0=min(signal), y1=max(signal),
+                    fillcolor="rgba(255,0,0,0.2)",
+                    line=dict(width=0),
+                    layer="below"
+                )
+
+        # Score trace for secondary plot
+        x_vals = [i for i in range(0, len(signal) - window_size + 1, step_size)]
+        score_fig.add_trace(go.Scatter(
+            x=x_vals,
+            y=result["score_list"],
+            mode="lines+markers",
+            name=fname
+        ))
+        score_fig.add_trace(go.Scatter(
+            x=x_vals,
+            y=[threshold]*len(x_vals),
+            mode="lines",
+            name="Threshold",
+            line=dict(color="orange", dash="dash")
         ))
 
         score_stats = pd.Series(result["score_list"]).describe()
@@ -186,6 +217,14 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
             f"{metric} Min": round(score_stats["min"], 4)
         })
 
+        with st.expander(f"Window Scores for {fname} - Bead {selected_bead}"):
+            df_window = pd.DataFrame(result["exceed_windows"], columns=["Start", "End", f"{metric}"])
+            df_window[f"{metric} > Threshold"] = df_window[f"{metric}"].apply(lambda x: x > threshold)
+            st.dataframe(df_window)
+
     st.plotly_chart(fig, use_container_width=True)
     st.markdown("### Final Trend Summary Table")
     st.dataframe(pd.DataFrame(final_summary))
+
+    st.markdown("### Trend Metric Score Trace (Per Window)")
+    st.plotly_chart(score_fig, use_container_width=True)
