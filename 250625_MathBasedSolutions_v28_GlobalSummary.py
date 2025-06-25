@@ -161,70 +161,85 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.keys()))
 
     final_summary = []
+    global_summary_dict = defaultdict(lambda: {"NOK Beads": [], "Any NOK": False})
     fig = go.Figure()
     score_fig = go.Figure()
 
-    for fname, signal in test_beads[selected_bead]:
-        result = analyze_trend_windows(signal, window_size, step_size, metric, threshold)
-        nok = result["percent_ascending"] > max_percent_ascending
-        color = 'red' if nok else 'black'
+    for bead_num in sorted(test_beads.keys()):
+        for fname, signal in test_beads[bead_num]:
+            result = analyze_trend_windows(signal, window_size, step_size, metric, threshold)
+            nok = result["percent_ascending"] > max_percent_ascending
+            color = 'red' if nok else 'black'
 
-        fig.add_trace(go.Scatter(
-            y=signal,
-            mode='lines',
-            name=fname,
-            line=dict(color=color, width=1.5)
-        ))
+            if bead_num == selected_bead:
+                fig.add_trace(go.Scatter(
+                    y=signal,
+                    mode='lines',
+                    name=fname,
+                    line=dict(color=color, width=1.5)
+                ))
+                if show_windows:
+                    for start, end, score in result["exceed_windows"]:
+                        fig.add_shape(
+                            type="rect",
+                            x0=start, x1=end,
+                            y0=min(signal), y1=max(signal),
+                            fillcolor="rgba(255,0,0,0.2)",
+                            line=dict(width=0),
+                            layer="below"
+                        )
+                x_vals = [i for i in range(0, len(signal) - window_size + 1, step_size)]
+                score_fig.add_trace(go.Scatter(
+                    x=x_vals,
+                    y=result["score_list"],
+                    mode="lines+markers",
+                    name=fname
+                ))
+                score_fig.add_trace(go.Scatter(
+                    x=x_vals,
+                    y=[threshold]*len(x_vals),
+                    mode="lines",
+                    name="Threshold",
+                    line=dict(color="orange", dash="dash")
+                ))
 
-        if show_windows:
-            for start, end, score in result["exceed_windows"]:
-                fig.add_shape(
-                    type="rect",
-                    x0=start, x1=end,
-                    y0=min(signal), y1=max(signal),
-                    fillcolor="rgba(255,0,0,0.2)",
-                    line=dict(width=0),
-                    layer="below"
-                )
+            score_stats = pd.Series(result["score_list"]).describe()
 
-        # Score trace for secondary plot
-        x_vals = [i for i in range(0, len(signal) - window_size + 1, step_size)]
-        score_fig.add_trace(go.Scatter(
-            x=x_vals,
-            y=result["score_list"],
-            mode="lines+markers",
-            name=fname
-        ))
-        score_fig.add_trace(go.Scatter(
-            x=x_vals,
-            y=[threshold]*len(x_vals),
-            mode="lines",
-            name="Threshold",
-            line=dict(color="orange", dash="dash")
-        ))
+            if bead_num == selected_bead:
+                final_summary.append({
+                    "File Name": fname,
+                    "Bead Number": bead_num,
+                    "Total Windows": result["total_windows"],
+                    "Ascending Windows": result["ascending_windows"],
+                    "% Ascending": round(result["percent_ascending"], 2),
+                    "Result": "NOK" if nok else "OK",
+                    f"{metric} Max": round(score_stats["max"], 4),
+                    f"{metric} Mean": round(score_stats["mean"], 4),
+                    f"{metric} Min": round(score_stats["min"], 4)
+                })
+                with st.expander(f"Window Scores for {fname} - Bead {bead_num}"):
+                    df_window = pd.DataFrame(result["exceed_windows"], columns=["Start", "End", f"{metric}"])
+                    df_window[f"{metric} > Threshold"] = df_window[f"{metric}"].apply(lambda x: x > threshold)
+                    st.dataframe(df_window)
 
-        score_stats = pd.Series(result["score_list"]).describe()
-
-        final_summary.append({
-            "File Name": fname,
-            "Bead Number": selected_bead,
-            "Total Windows": result["total_windows"],
-            "Ascending Windows": result["ascending_windows"],
-            "% Ascending": round(result["percent_ascending"], 2),
-            "Result": "NOK" if nok else "OK",
-            f"{metric} Max": round(score_stats["max"], 4),
-            f"{metric} Mean": round(score_stats["mean"], 4),
-            f"{metric} Min": round(score_stats["min"], 4)
-        })
-
-        with st.expander(f"Window Scores for {fname} - Bead {selected_bead}"):
-            df_window = pd.DataFrame(result["exceed_windows"], columns=["Start", "End", f"{metric}"])
-            df_window[f"{metric} > Threshold"] = df_window[f"{metric}"].apply(lambda x: x > threshold)
-            st.dataframe(df_window)
+            if nok:
+                global_summary_dict[fname]["NOK Beads"].append(str(bead_num))
+                global_summary_dict[fname]["Any NOK"] = True
 
     st.plotly_chart(fig, use_container_width=True)
-    st.markdown("### Final Trend Summary Table")
+    st.markdown("### Final Trend Summary Table (Selected Bead)")
     st.dataframe(pd.DataFrame(final_summary))
 
     st.markdown("### Trend Metric Score Trace (Per Window)")
     st.plotly_chart(score_fig, use_container_width=True)
+
+    global_summary = []
+    for fname, info in global_summary_dict.items():
+        global_summary.append({
+            "File Name": fname,
+            "NOK Beads": ", ".join(sorted(info["NOK Beads"], key=lambda x: int(x))),
+            "Welding Result": "NOK" if info["Any NOK"] else "OK"
+        })
+
+    st.markdown("### Global NOK Bead Summary")
+    st.dataframe(pd.DataFrame(global_summary))
