@@ -7,6 +7,7 @@ import plotly.graph_objects as go
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import seaborn as sns
+from scipy.signal import savgol_filter
 
 # --- File Extraction ---
 def extract_zip(uploaded_file, extract_dir):
@@ -132,7 +133,13 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     if threshold_mode == "Relative (%)":
         threshold /= 100.0
 
-    selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.keys()))
+    use_smoothing = st.sidebar.checkbox("Apply Signal Smoothing", value=False)
+if use_smoothing:
+    smoothing_method = st.sidebar.selectbox("Smoothing Method", ["Savitzky-Golay"])
+    window_length = st.sidebar.number_input("Smoothing Window Length (odd number)", min_value=3, value=11, step=2)
+    polyorder = st.sidebar.number_input("Polynomial Order", min_value=1, value=2, step=1)
+
+selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.keys()))
 
     fig = go.Figure()
     score_fig = go.Figure()
@@ -140,7 +147,10 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     global_summary_dict = defaultdict(lambda: {"Change Points": []})
 
     for bead_num in sorted(test_beads.keys()):
-        for fname, signal in test_beads[bead_num]:
+        for fname, raw_signal in test_beads[bead_num]:
+            signal = raw_signal.copy()
+            if use_smoothing and smoothing_method == "Savitzky-Golay" and len(signal) >= window_length:
+                signal = pd.Series(savgol_filter(signal, window_length, polyorder))
             result = analyze_change_points(signal, window_size, step_size, metric, threshold, threshold_mode)
             color = 'red' if result["change_points"] else 'black'
 
@@ -192,6 +202,19 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
                     st.dataframe(df_window)
 
     st.plotly_chart(fig, use_container_width=True, key="signal_plot")
+
+    if use_smoothing:
+        st.markdown("### Smoothed Signal Plot")
+        fig_smooth = go.Figure()
+        for fname, raw_signal in test_beads[selected_bead]:
+            if smoothing_method == "Savitzky-Golay" and len(raw_signal) >= window_length:
+                smooth_signal = savgol_filter(raw_signal, window_length, polyorder)
+                fig_smooth.add_trace(go.Scatter(
+                    y=smooth_signal,
+                    mode='lines',
+                    name=f"{fname} (Smoothed)"
+                ))
+        st.plotly_chart(fig_smooth, use_container_width=True, key="smoothed_signal_plot")
     st.markdown("### Change Magnitude Score Trace (Per Window)")
     st.plotly_chart(score_fig, use_container_width=True, key="main_score_trace")
 
