@@ -109,7 +109,7 @@ if uploaded_zip:
                 raw_beads[bead_num].append((os.path.basename(file), signal))
                 bead_lengths.append(len(signal))
 
-        # --- Length Jump Heuristic ---
+        # Length jump heuristic
         sorted_lengths = sorted(bead_lengths)
         ratios = [sorted_lengths[i+1]/sorted_lengths[i] for i in range(len(sorted_lengths)-1)]
         max_jump_idx = np.argmax(ratios)
@@ -127,7 +127,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     analysis_percent = st.session_state["analysis_percent"]
 
     st.sidebar.header("Aluminum Filtering")
-    alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Above)", value=3.0)
+    alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Above)", value=5000.0)
 
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
@@ -147,6 +147,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
 
     st.subheader(f"Raw and Smoothed Signal for Bead {selected_bead}")
     raw_fig = go.Figure()
+    score_fig = go.Figure()
 
     table_data = []
     global_summary = defaultdict(list)
@@ -154,11 +155,9 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            # --- Always plot raw ---
             if bead_num == selected_bead:
                 raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)", line=dict(width=1)))
 
-            # Pre-filter for Aluminum only before analysis
             sig = raw_sig.copy()
             if bead_type == "Aluminum":
                 sig = sig[sig < alu_ignore_thresh]
@@ -186,7 +185,13 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
                 for start, end, _ in result["change_points"]:
                     raw_fig.add_shape(type="rect", x0=start, x1=end, y0=min(sig), y1=max(sig), fillcolor="rgba(255,0,0,0.2)", line_width=0)
 
+                y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
+                score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
+                score_fig.add_trace(go.Scatter(x=result["positions"], y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]), mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
+
     st.plotly_chart(raw_fig, use_container_width=True)
+    st.subheader("Score Trace (Change Magnitude per Window)")
+    st.plotly_chart(score_fig, use_container_width=True)
 
     st.subheader("Change Point Summary Table")
     st.dataframe(pd.DataFrame(table_data))
