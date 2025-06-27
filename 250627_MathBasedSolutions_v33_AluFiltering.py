@@ -154,13 +154,9 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            if bead_num == selected_bead:
-                raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)", line=dict(width=1)))
-
             sig = raw_sig.copy()
             if bead_type == "Aluminum":
                 sig = sig[sig < alu_ignore_thresh]
-
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
@@ -179,10 +175,13 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             })
 
             if bead_num == selected_bead:
+                # Add shaded areas to BACK
+                for start, end, _ in result["change_points"]:
+                    raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
+
+                raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)", line=dict(width=1)))
                 color = 'red' if result["change_points"] else 'black'
                 raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
-                for start, end, _ in result["change_points"]:
-                    raw_fig.add_shape(type="rect", x0=start, x1=end, y0=min(sig), y1=max(sig), fillcolor="rgba(255,0,0,0.2)", line_width=0)
 
                 y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
                 score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
