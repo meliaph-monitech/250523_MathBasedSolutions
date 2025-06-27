@@ -1,5 +1,3 @@
-# New clean version will be constructed here based on clarified requirements.
-
 import streamlit as st
 import zipfile
 import os
@@ -43,7 +41,7 @@ def segment_beads(df, column, threshold):
 def analyze_change_points(signal, window_size, step_size, metric, threshold, mode):
     signal = signal.dropna().reset_index(drop=True)
     change_points = []
-    diff_scores = []
+    abs_scores, rel_scores = [], []
     positions = []
 
     for start in range(0, len(signal) - 2 * window_size + 1, step_size):
@@ -59,20 +57,21 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
         else:
             raise ValueError("Invalid metric")
 
-        if mode == "Absolute":
-            diff = abs(v1 - v2)
-        else:
-            diff = abs(v1 - v2) / max(abs(v1), 1e-6)
+        abs_diff = abs(v1 - v2)
+        rel_diff = abs_diff / max(abs(v1), 1e-6)
 
-        diff_scores.append(diff)
+        abs_scores.append(abs_diff)
+        rel_scores.append(rel_diff)
         positions.append(start + window_size)
 
-        if diff > threshold:
-            change_points.append((start, start + 2 * window_size - 1, diff))
+        check_diff = abs_diff if mode == "Absolute" else rel_diff
+        if check_diff > threshold:
+            change_points.append((start, start + 2 * window_size - 1, check_diff))
 
     return {
         "positions": positions,
-        "diff_scores": diff_scores,
+        "abs_scores": abs_scores,
+        "rel_scores": rel_scores,
         "change_points": change_points
     }
 
@@ -94,6 +93,8 @@ if uploaded_zip:
     seg_thresh = st.sidebar.number_input("Segmentation Threshold", value=0.0, key="seg_thresh")
     signal_col = st.sidebar.selectbox("Signal Column for Analysis", columns, key="sig_col")
 
+    analysis_percent = st.sidebar.slider("% of Signal Length to Consider for NOK Decision", min_value=10, max_value=100, value=50, step=10)
+
     if st.sidebar.button("Segment Beads"):
         with open("uploaded.zip", "wb") as f:
             f.write(uploaded_zip.getbuffer())
@@ -109,10 +110,12 @@ if uploaded_zip:
 
         st.session_state["raw_beads"] = raw_beads
         st.session_state["analysis_ready"] = True
+        st.session_state["analysis_percent"] = analysis_percent
         st.success("✅ Bead segmentation completed.")
 
 if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     raw_beads = st.session_state["raw_beads"]
+    analysis_percent = st.session_state["analysis_percent"]
 
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
@@ -133,6 +136,9 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     st.subheader(f"Raw and Smoothed Signal for Bead {selected_bead}")
     raw_plot = go.Figure()
     score_plot = go.Figure()
+    abs_plot = go.Figure()
+    rel_plot = go.Figure()
+
     table_rows = []
     global_summary = defaultdict(list)
 
@@ -142,7 +148,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             sig = raw_sig
-            if use_smooth and len(sig) >= win_len:
+            if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, poly))
 
             result = analyze_change_points(sig, win_size, step, metric, thresh, mode)
@@ -152,21 +158,31 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
                 raw_plot.add_trace(go.Scatter(y=sig, name=f"{fname} (smoothed)" if use_smooth else fname, mode='lines', line=dict(color=color)))
                 for start, end, _ in result["change_points"]:
                     raw_plot.add_shape(type="rect", x0=start, x1=end, y0=min(sig), y1=max(sig), fillcolor="rgba(255,0,0,0.2)", line_width=0)
-                score_plot.add_trace(go.Scatter(x=result["positions"], y=result["diff_scores"], mode='lines+markers', name=fname))
-                score_plot.add_trace(go.Scatter(x=result["positions"], y=[thresh]*len(result["positions"]), mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
 
-            if result["change_points"]:
+                score_plot.add_trace(go.Scatter(x=result["positions"], y=result["abs_scores"] if mode == "Absolute" else result["rel_scores"], mode='lines+markers', name=fname))
+                score_plot.add_trace(go.Scatter(x=result["positions"], y=[thresh]*len(result["positions"]), mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
+                abs_plot.add_trace(go.Scatter(x=result["positions"], y=result["abs_scores"], name=f"{fname} Abs", mode='lines'))
+                rel_plot.add_trace(go.Scatter(x=result["positions"], y=[v * 100 for v in result["rel_scores"]], name=f"{fname} Rel %", mode='lines'))
+
+            max_index = int(len(raw_sig) * (analysis_percent / 100))
+            nok = any(end < max_index for (start, end, _) in result["change_points"])
+            if nok:
                 global_summary[fname].append(str(bead_num))
+
             table_rows.append({
                 "File": fname,
                 "Bead": bead_num,
                 "Change Points": len(result["change_points"]),
-                "Result": "NOK" if result["change_points"] else "OK"
+                "Result": "NOK" if nok else "OK"
             })
 
     st.plotly_chart(raw_plot, use_container_width=True)
     st.subheader("Score Trace (Change Magnitude per Window)")
     st.plotly_chart(score_plot, use_container_width=True)
+
+    st.subheader("Comparison: Absolute and Relative Score Traces")
+    st.plotly_chart(abs_plot, use_container_width=True)
+    st.plotly_chart(rel_plot, use_container_width=True)
 
     st.subheader("Change Point Summary (Selected Bead)")
     st.dataframe(pd.DataFrame([row for row in table_rows if row["Bead"] == selected_bead]))
