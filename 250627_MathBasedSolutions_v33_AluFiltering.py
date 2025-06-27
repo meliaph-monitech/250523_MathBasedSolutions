@@ -127,7 +127,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     analysis_percent = st.session_state["analysis_percent"]
 
     st.sidebar.header("Aluminum Filtering")
-    alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Above)", value=5000.0)
+    alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Above)", value=3.0)
 
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
