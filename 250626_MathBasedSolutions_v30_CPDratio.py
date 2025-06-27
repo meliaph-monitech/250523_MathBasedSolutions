@@ -243,10 +243,12 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
 
     global_summary = []
     for fname, info in global_summary_dict.items():
+        nok_beads = sorted(set(bead for bead, _, _, _ in info["Change Points"]))
         global_summary.append({
             "File Name": fname,
+            "NOK Beads": ", ".join(map(str, nok_beads)),
             "Total Change Points": len(info["Change Points"]),
-            "Welding Result": "NOK" if info["Change Points"] else "OK"
+            "Welding Result": "NOK" if nok_beads else "OK"
         })
 
     st.markdown("### Global Change Point Summary")
