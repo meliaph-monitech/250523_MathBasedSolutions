@@ -109,7 +109,6 @@ if uploaded_zip:
                 raw_beads[bead_num].append((os.path.basename(file), signal))
                 bead_lengths.append(len(signal))
 
-        # Length jump heuristic
         sorted_lengths = sorted(bead_lengths)
         ratios = [sorted_lengths[i+1]/sorted_lengths[i] for i in range(len(sorted_lengths)-1)]
         max_jump_idx = np.argmax(ratios)
