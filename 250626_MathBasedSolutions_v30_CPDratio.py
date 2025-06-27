@@ -40,7 +40,7 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 # --- Change Point Analysis ---
-def analyze_change_points(signal: pd.Series, window_size: int, step_size: int, metric: str, threshold: float):
+def analyze_change_points(signal: pd.Series, window_size: int, step_size: int, metric: str, threshold: float, mode: str):
     signal = signal.dropna().reset_index(drop=True)
     change_points = []
     diff_scores = []
@@ -51,16 +51,25 @@ def analyze_change_points(signal: pd.Series, window_size: int, step_size: int, m
         next_window = signal[start + window_size:start + 2 * window_size]
 
         if metric == "Mean":
-            diff = abs(curr_window.mean() - next_window.mean())
+            curr_stat = curr_window.mean()
+            next_stat = next_window.mean()
         elif metric == "Median":
-            diff = abs(curr_window.median() - next_window.median())
+            curr_stat = curr_window.median()
+            next_stat = next_window.median()
         elif metric == "Standard Deviation":
-            diff = abs(curr_window.std() - next_window.std())
+            curr_stat = curr_window.std()
+            next_stat = next_window.std()
         else:
             raise ValueError("Invalid metric")
 
+        if mode == "Absolute":
+            diff = abs(curr_stat - next_stat)
+        else:  # Relative
+            denom = max(abs(curr_stat), 1e-6)
+            diff = abs(curr_stat - next_stat) / denom
+
         diff_scores.append(diff)
-        positions.append(start + window_size)  # mark the transition point
+        positions.append(start + window_size)
 
         if diff > threshold:
             change_points.append((start, start + 2 * window_size - 1, diff))
@@ -86,7 +95,7 @@ if test_zip:
     columns = sample_file.columns.tolist()
 
     filter_column = st.sidebar.selectbox("Select column for segmentation", columns)
-    threshold = st.sidebar.number_input("Segmentation threshold", value=0.0)
+    threshold_seg = st.sidebar.number_input("Segmentation threshold", value=0.0)
     signal_column = st.sidebar.selectbox("Select signal column for change point analysis", columns)
 
     if st.sidebar.button("Segment Beads"):
@@ -99,7 +108,7 @@ if test_zip:
             bead_data = defaultdict(list)
             for file in files:
                 df = pd.read_csv(file)
-                segments = segment_beads(df, filter_column, threshold)
+                segments = segment_beads(df, filter_column, threshold_seg)
                 for bead_num, (start, end) in enumerate(segments, start=1):
                     signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
                     bead_data[bead_num].append((os.path.basename(file), signal))
@@ -117,7 +126,11 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     window_size = st.sidebar.number_input("Window Size (points)", min_value=10, value=100, step=10)
     step_size = st.sidebar.number_input("Step Size (points)", min_value=1, value=20, step=1)
     metric = st.sidebar.selectbox("Change Point Metric", ["Mean", "Median", "Standard Deviation"])
-    threshold = float(st.sidebar.text_input("Change Magnitude Threshold", value="0.10000"))
+    threshold_mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"])
+    threshold_label = "Change Magnitude Threshold" if threshold_mode == "Absolute" else "Change Magnitude Threshold (%)"
+    threshold = float(st.sidebar.text_input(threshold_label, value="0.10000"))
+    if threshold_mode == "Relative (%)":
+        threshold /= 100.0  # Convert percent to ratio
 
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.keys()))
 
@@ -128,7 +141,7 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
 
     for bead_num in sorted(test_beads.keys()):
         for fname, signal in test_beads[bead_num]:
-            result = analyze_change_points(signal, window_size, step_size, metric, threshold)
+            result = analyze_change_points(signal, window_size, step_size, metric, threshold, threshold_mode)
             color = 'red' if result["change_points"] else 'black'
 
             if bead_num == selected_bead:
