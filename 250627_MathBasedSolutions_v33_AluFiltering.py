@@ -77,7 +77,7 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
 
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
-st.title("Change Point Detector (with Optional Smoothing)")
+st.title("Change Point Detector (Aluminum/Copper Auto Classification")
 
 st.sidebar.header("Upload and Segmentation")
 uploaded_zip = st.sidebar.file_uploader("Upload ZIP of CSVs", type="zip")
@@ -101,26 +101,34 @@ if uploaded_zip:
         file_paths = extract_zip("uploaded.zip", "data")
 
         raw_beads = defaultdict(list)
+        bead_lengths = []
         for path in file_paths:
             df = pd.read_csv(path)
             beads = segment_beads(df, seg_col, seg_thresh)
             for bead_num, (start, end) in enumerate(beads, 1):
                 segment = df.iloc[start:end+1][signal_col].reset_index(drop=True)
                 raw_beads[bead_num].append((os.path.basename(path), segment))
+                bead_lengths.append(len(segment))
 
+        median_length = np.median(bead_lengths)
         st.session_state["raw_beads"] = raw_beads
         st.session_state["analysis_ready"] = True
         st.session_state["analysis_percent"] = analysis_percent
-        st.success("✅ Bead segmentation completed.")
+        st.session_state["median_length"] = median_length
+        st.success(f"✅ Bead segmentation completed. Median length: {median_length}")
 
 if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     raw_beads = st.session_state["raw_beads"]
     analysis_percent = st.session_state["analysis_percent"]
+    median_length = st.session_state["median_length"]
+
+    st.sidebar.header("Aluminum Specific Settings")
+    alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Values Above)", value=5000.0)
 
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
     if use_smooth:
-        win_len = st.sidebar.number_input("Smoothing Window Length (odd)", 3, 399, 399, step=2)
+        win_len = st.sidebar.number_input("Smoothing Window Length (odd)", 3, 199, 199, step=2)
         poly = st.sidebar.number_input("Polynomial Order", 1, 5, 5)
 
     win_size = st.sidebar.number_input("Window Size (Analysis)", 10, 1000, 350, step=10)
@@ -142,12 +150,13 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     table_rows = []
     global_summary = defaultdict(list)
 
-    for fname, signal in raw_beads[selected_bead]:
-        raw_plot.add_trace(go.Scatter(y=signal, name=fname, mode='lines', line=dict(width=1)))
-
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
+            bead_type = "Aluminum" if len(raw_sig) <= 0.7 * median_length else "Copper"
             sig = raw_sig
+            if bead_type == "Aluminum":
+                sig = sig[sig < alu_ignore_thresh]
+
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, poly))
 
@@ -155,7 +164,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             color = 'red' if result['change_points'] else 'black'
 
             if bead_num == selected_bead:
-                raw_plot.add_trace(go.Scatter(y=sig, name=f"{fname} (smoothed)" if use_smooth else fname, mode='lines', line=dict(color=color)))
+                raw_plot.add_trace(go.Scatter(y=sig, name=f"{fname} ({bead_type})", mode='lines', line=dict(color=color)))
                 for start, end, _ in result["change_points"]:
                     raw_plot.add_shape(type="rect", x0=start, x1=end, y0=min(sig), y1=max(sig), fillcolor="rgba(255,0,0,0.2)", line_width=0)
 
@@ -167,11 +176,12 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             max_index = int(len(raw_sig) * (analysis_percent / 100))
             nok = any(end < max_index for (start, end, _) in result["change_points"])
             if nok:
-                global_summary[fname].append(str(bead_num))
+                global_summary[fname].append(f"{bead_num} ({bead_type})")
 
             table_rows.append({
                 "File": fname,
                 "Bead": bead_num,
+                "Bead Type": bead_type,
                 "Change Points": len(result["change_points"]),
                 "Result": "NOK" if nok else "OK"
             })
