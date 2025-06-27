@@ -198,6 +198,50 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     st.markdown("### Change Magnitude Score Trace (Per Window)")
     st.plotly_chart(score_fig, use_container_width=True)
 
+    st.markdown("### Comparison: Absolute and Relative Score Traces")
+    abs_score_fig = go.Figure()
+    rel_score_fig = go.Figure()
+
+    for bead_num in sorted(test_beads.keys()):
+        for fname, signal in test_beads[bead_num]:
+            result_abs = analyze_change_points(signal, window_size, step_size, metric, threshold, mode="Absolute")
+            result_rel = analyze_change_points(signal, window_size, step_size, metric, threshold, mode="Relative")
+
+            abs_score_fig.add_trace(go.Scatter(
+                x=result_abs["positions"],
+                y=result_abs["diff_scores"],
+                mode="lines+markers",
+                name=f"{fname} (Abs)"
+            ))
+            abs_score_fig.add_trace(go.Scatter(
+                x=result_abs["positions"],
+                y=[threshold]*len(result_abs["positions"]),
+                mode="lines",
+                name="Absolute Threshold",
+                line=dict(color="orange", dash="dash")
+            ))
+
+            rel_score_fig.add_trace(go.Scatter(
+                x=result_rel["positions"],
+                y=[v * 100 for v in result_rel["diff_scores"]],
+                mode="lines+markers",
+                name=f"{fname} (Rel %)"
+            ))
+            rel_score_fig.add_trace(go.Scatter(
+                x=result_rel["positions"],
+                y=[threshold * 100]*len(result_rel["positions"]),
+                mode="lines",
+                name="Relative Threshold (%)",
+                line=dict(color="green", dash="dot")
+            ))
+
+    st.markdown("#### Absolute Mode Scores")
+    st.plotly_chart(abs_score_fig, use_container_width=True)
+
+    st.markdown("#### Relative Mode Scores (%)")
+    st.plotly_chart(rel_score_fig, use_container_width=True)
+    st.plotly_chart(score_fig, use_container_width=True)
+
     global_summary = []
     for fname, info in global_summary_dict.items():
         global_summary.append({
