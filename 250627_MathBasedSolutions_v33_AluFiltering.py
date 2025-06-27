@@ -6,12 +6,16 @@ import numpy as np
 import plotly.graph_objects as go
 from collections import defaultdict
 from scipy.signal import savgol_filter
+import shutil
 
-# --- Utility: File Extraction ---
 def extract_zip(uploaded_file, extract_dir):
     if os.path.exists(extract_dir):
         for file in os.listdir(extract_dir):
-            os.remove(os.path.join(extract_dir, file))
+            path = os.path.join(extract_dir, file)
+            if os.path.isfile(path):
+                os.remove(path)
+            elif os.path.isdir(path):
+                shutil.rmtree(path)
     else:
         os.makedirs(extract_dir)
 
@@ -19,6 +23,19 @@ def extract_zip(uploaded_file, extract_dir):
         zip_ref.extractall(extract_dir)
 
     return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
+
+# # --- Utility: File Extraction ---
+# def extract_zip(uploaded_file, extract_dir):
+#     if os.path.exists(extract_dir):
+#         for file in os.listdir(extract_dir):
+#             os.remove(os.path.join(extract_dir, file))
+#     else:
+#         os.makedirs(extract_dir)
+
+#     with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
+#         zip_ref.extractall(extract_dir)
+
+#     return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
 
 # --- Utility: Bead Segmentation ---
 def segment_beads(df, column, threshold):
