@@ -5,8 +5,6 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 from collections import defaultdict
-import matplotlib.pyplot as plt
-import seaborn as sns
 from scipy.signal import savgol_filter
 
 # --- File Extraction ---
@@ -81,12 +79,12 @@ def analyze_change_points(signal: pd.Series, window_size: int, step_size: int, m
         "change_points": change_points
     }
 
-# --- App Setup ---
+# --- Streamlit App ---
 st.set_page_config(layout="wide")
-st.title("Change Point Detector v1")
+st.title("Change Point Detector with Optional Smoothing")
 
-st.sidebar.header("Upload Data")
-test_zip = st.sidebar.file_uploader("ZIP file to Analyze", type="zip")
+st.sidebar.header("Upload & Segmentation Settings")
+test_zip = st.sidebar.file_uploader("Upload ZIP file of CSVs", type="zip")
 
 if test_zip:
     with zipfile.ZipFile(test_zip, 'r') as zip_ref:
@@ -95,145 +93,90 @@ if test_zip:
             sample_file = pd.read_csv(sample_file_raw)
     columns = sample_file.columns.tolist()
 
-    filter_column = st.sidebar.selectbox("Select column for segmentation", columns)
-    threshold_seg = st.sidebar.number_input("Segmentation threshold", value=0.0)
-    signal_column = st.sidebar.selectbox("Select signal column for change point analysis", columns)
+    filter_column = st.sidebar.selectbox("Segmentation Column", columns, key="seg_col")
+    threshold_seg = st.sidebar.number_input("Segmentation Threshold", value=0.0, key="seg_threshold")
+    signal_column = st.sidebar.selectbox("Signal Column for Analysis", columns, key="sig_col")
 
-    if st.sidebar.button("Segment Beads"):
-        with open("test.zip", "wb") as f:
-            f.write(test_zip.getbuffer())
+    st.sidebar.header("Optional Smoothing")
+    use_smoothing = st.sidebar.checkbox("Apply Smoothing", value=False, key="smoothing_toggle")
+    if use_smoothing:
+        window_length = st.sidebar.number_input("Window Length (odd)", min_value=3, value=11, step=2, key="smooth_win")
+        polyorder = st.sidebar.number_input("Polynomial Order", min_value=1, value=2, step=1, key="smooth_poly")
 
-        test_files = extract_zip("test.zip", "test_data")
-
-        def process_files(files):
-            bead_data = defaultdict(list)
-            for file in files:
-                df = pd.read_csv(file)
-                segments = segment_beads(df, filter_column, threshold_seg)
-                for bead_num, (start, end) in enumerate(segments, start=1):
-                    signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
-                    bead_data[bead_num].append((os.path.basename(file), signal))
-            return bead_data
-
-        test_beads = process_files(test_files)
-        st.session_state["test_beads"] = test_beads
-        st.session_state["analysis_ready"] = True
-        st.success("✅ Bead segmentation completed.")
-
-if "test_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     st.sidebar.header("Change Point Detection Settings")
-    window_size = st.sidebar.number_input("Window Size (points)", min_value=10, value=100, step=10)
-    step_size = st.sidebar.number_input("Step Size (points)", min_value=1, value=20, step=1)
-    metric = st.sidebar.selectbox("Change Point Metric", ["Mean", "Median", "Standard Deviation"])
-    threshold_mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"])
+    window_size = st.sidebar.number_input("Window Size", min_value=10, value=100, step=10, key="win_size")
+    step_size = st.sidebar.number_input("Step Size", min_value=1, value=20, step=1, key="step_size")
+    metric = st.sidebar.selectbox("Metric", ["Mean", "Median", "Standard Deviation"], key="metric")
+    threshold_mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"], key="mode")
     threshold_label = "Change Magnitude Threshold" if threshold_mode == "Absolute" else "Change Magnitude Threshold (%)"
+    threshold = float(st.sidebar.text_input(threshold_label, value="0.1", key="threshold_val"))
+    if threshold_mode == "Relative (%)":
+        threshold /= 100.0
+
     st.sidebar.markdown("""
 Use the plots below to understand the score distributions for your data. Adjust the threshold accordingly:
 - For **Absolute**, observe the actual value range.
 - For **Relative**, aim for a small % (e.g., 3–10%).
 """)
-threshold = float(st.sidebar.text_input(threshold_label, value="0.10000"))
-    if threshold_mode == "Relative (%)":
-        threshold /= 100.0
 
-    use_smoothing = st.sidebar.checkbox("Apply Signal Smoothing", value=False)
-    if use_smoothing:
-        smoothing_method = st.sidebar.selectbox("Smoothing Method", ["Savitzky-Golay"])
-        window_length = st.sidebar.number_input("Smoothing Window Length (odd number)", min_value=3, value=11, step=2)
-        polyorder = st.sidebar.number_input("Polynomial Order", min_value=1, value=2, step=1)
-    test_beads = st.session_state["test_beads"]
-raw_beads = test_beads.copy()
-smoothed_beads = defaultdict(list)
+    if st.sidebar.button("Segment Beads and Run Analysis"):
+        with open("uploaded.zip", "wb") as f:
+            f.write(test_zip.getbuffer())
+        test_files = extract_zip("uploaded.zip", "data")
 
-# Preprocess smoothing upfront
-for bead_num in sorted(raw_beads.keys()):
-    for fname, raw_signal in raw_beads[bead_num]:
-        signal = raw_signal.copy()
-        if use_smoothing and smoothing_method == "Savitzky-Golay" and len(signal) >= window_length:
-            signal = pd.Series(savgol_filter(signal, window_length, polyorder))
-        smoothed_beads[bead_num].append((fname, signal))
+        raw_beads = defaultdict(list)
+        smoothed_beads = defaultdict(list)
 
-    st.sidebar.header("Change Point Detection Settings")
-    window_size = st.sidebar.number_input("Window Size (points)", min_value=10, value=100, step=10)
-    step_size = st.sidebar.number_input("Step Size (points)", min_value=1, value=20, step=1)
-    metric = st.sidebar.selectbox("Change Point Metric", ["Mean", "Median", "Standard Deviation"])
-    threshold_mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"])
-    threshold_label = "Change Magnitude Threshold" if threshold_mode == "Absolute" else "Change Magnitude Threshold (%)"
-    threshold = float(st.sidebar.text_input(threshold_label, value="0.10000"))
-    if threshold_mode == "Relative (%)":
-        threshold /= 100.0
+        for file in test_files:
+            df = pd.read_csv(file)
+            segments = segment_beads(df, filter_column, threshold_seg)
+            for bead_num, (start, end) in enumerate(segments, 1):
+                raw_signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
+                raw_beads[bead_num].append((os.path.basename(file), raw_signal))
+                if use_smoothing and len(raw_signal) >= window_length:
+                    smoothed = pd.Series(savgol_filter(raw_signal, window_length, polyorder))
+                else:
+                    smoothed = raw_signal
+                smoothed_beads[bead_num].append((os.path.basename(file), smoothed))
 
-    use_smoothing = st.sidebar.checkbox("Apply Signal Smoothing", value=False)
-if use_smoothing:
-    st.markdown("### Smoothed Signal Plot")
-    fig_smooth = go.Figure()
-    for fname, raw_signal in raw_beads[selected_bead]:
-        if smoothing_method == "Savitzky-Golay" and len(raw_signal) >= window_length:
-            smooth_signal = savgol_filter(raw_signal, window_length, polyorder)
-            fig_smooth.add_trace(go.Scatter(
-                y=smooth_signal,
-                mode='lines',
-                name=f"{fname} (Smoothed)"
-            ))
-    st.plotly_chart(fig_smooth, use_container_width=True, key="smooth_plot")
-    st.markdown("### Change Magnitude Score Trace (Per Window)")
-    st.plotly_chart(score_fig, use_container_width=True, key="main_score_trace")
+        selected_bead = st.selectbox("Select Bead Number", sorted(smoothed_beads.keys()))
 
-    st.markdown("### Comparison: Absolute and Relative Score Traces")
-    abs_score_fig = go.Figure()
-    rel_score_fig = go.Figure()
+        st.subheader("Raw and Smoothed Signal")
+        fig_raw = go.Figure()
+        fig_smooth = go.Figure()
+        for fname, raw_sig in raw_beads[selected_bead]:
+            fig_raw.add_trace(go.Scatter(y=raw_sig, mode='lines', name=fname))
+        for fname, smooth_sig in smoothed_beads[selected_bead]:
+            fig_smooth.add_trace(go.Scatter(y=smooth_sig, mode='lines', name=fname))
+        st.plotly_chart(fig_raw, use_container_width=True)
+        if use_smoothing:
+            st.plotly_chart(fig_smooth, use_container_width=True)
 
-    for bead_num in sorted(smoothed_beads.keys()):
-        for fname, signal in smoothed_beads[bead_num]:
-            result_abs = analyze_change_points(signal, window_size, step_size, metric, threshold, mode="Absolute")
-            result_rel = analyze_change_points(signal, window_size, step_size, metric, threshold, mode="Relative")
+        st.subheader("Change Magnitude Score Trace")
+        score_fig = go.Figure()
+        final_summary = []
+        global_summary_dict = defaultdict(list)
 
-            abs_score_fig.add_trace(go.Scatter(
-                x=result_abs["positions"],
-                y=result_abs["diff_scores"],
-                mode="lines+markers",
-                name=f"{fname} (Abs)"
-            ))
-            abs_score_fig.add_trace(go.Scatter(
-                x=result_abs["positions"],
-                y=[threshold]*len(result_abs["positions"]),
-                mode="lines",
-                name="Absolute Threshold",
-                line=dict(color="orange", dash="dash")
-            ))
+        for bead_num in sorted(smoothed_beads.keys()):
+            for (fname, signal) in smoothed_beads[bead_num]:
+                result = analyze_change_points(signal, window_size, step_size, metric, threshold, threshold_mode)
+                nok = bool(result['change_points'])
+                if bead_num == selected_bead:
+                    score_fig.add_trace(go.Scatter(x=result["positions"], y=result["diff_scores"], mode='lines+markers', name=fname))
+                    score_fig.add_trace(go.Scatter(x=result["positions"], y=[threshold]*len(result["positions"]), mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
+                if nok:
+                    global_summary_dict[fname].append(str(bead_num))
+                final_summary.append({
+                    "File Name": fname,
+                    "Bead Number": bead_num,
+                    "Total Change Points": len(result["change_points"]),
+                    "Result": "NOK" if nok else "OK"
+                })
 
-            rel_score_fig.add_trace(go.Scatter(
-                x=result_rel["positions"],
-                y=[v * 100 for v in result_rel["diff_scores"]],
-                mode="lines+markers",
-                name=f"{fname} (Rel %)")
-            )
-            rel_score_fig.add_trace(go.Scatter(
-                x=result_rel["positions"],
-                y=[threshold * 100]*len(result_rel["positions"]),
-                mode="lines",
-                name="Relative Threshold (%)",
-                line=dict(color="green", dash="dot")
-            ))
+        st.plotly_chart(score_fig, use_container_width=True)
+        st.subheader("Final Summary Table")
+        st.dataframe(pd.DataFrame(final_summary))
 
-    st.markdown("#### Absolute Mode Scores")
-    st.plotly_chart(abs_score_fig, use_container_width=True, key="abs_trace")
-
-    st.markdown("#### Relative Mode Scores (%)")
-    st.plotly_chart(rel_score_fig, use_container_width=True, key="rel_trace")
-
-    st.markdown("### Change Point Summary Table (Selected Bead)")
-    st.dataframe(pd.DataFrame(final_summary))
-
-    global_summary = []
-    for fname, info in global_summary_dict.items():
-        nok_beads = sorted(set(bead for bead, _, _, _ in info["Change Points"]))
-        global_summary.append({
-            "File Name": fname,
-            "NOK Beads": ", ".join(map(str, nok_beads)),
-            "Total Change Points": len(info["Change Points"]),
-            "Welding Result": "NOK" if nok_beads else "OK"
-        })
-
-    st.markdown("### Global Change Point Summary")
-    st.dataframe(pd.DataFrame(global_summary))
+        st.subheader("Global NOK Bead Summary")
+        global_summary = [{"File Name": fname, "NOK Beads": ", ".join(sorted(beads)), "Welding Result": "NOK" if beads else "OK"} for fname, beads in global_summary_dict.items()]
+        st.dataframe(pd.DataFrame(global_summary))
