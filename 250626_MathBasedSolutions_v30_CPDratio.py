@@ -130,7 +130,7 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     threshold_label = "Change Magnitude Threshold" if threshold_mode == "Absolute" else "Change Magnitude Threshold (%)"
     threshold = float(st.sidebar.text_input(threshold_label, value="0.10000"))
     if threshold_mode == "Relative (%)":
-        threshold /= 100.0  # Convert percent to ratio
+        threshold /= 100.0
 
     selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.keys()))
 
@@ -191,12 +191,9 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
                     df_window[f"{metric} Diff > Threshold"] = df_window[f"{metric} Diff"].apply(lambda x: x > threshold)
                     st.dataframe(df_window)
 
-    st.plotly_chart(fig, use_container_width=True)
-    st.markdown("### Change Point Summary Table (Selected Bead)")
-    st.dataframe(pd.DataFrame(final_summary))
-
+    st.plotly_chart(fig, use_container_width=True, key="signal_plot")
     st.markdown("### Change Magnitude Score Trace (Per Window)")
-    st.plotly_chart(score_fig, use_container_width=True)
+    st.plotly_chart(score_fig, use_container_width=True, key="main_score_trace")
 
     st.markdown("### Comparison: Absolute and Relative Score Traces")
     abs_score_fig = go.Figure()
@@ -225,8 +222,8 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
                 x=result_rel["positions"],
                 y=[v * 100 for v in result_rel["diff_scores"]],
                 mode="lines+markers",
-                name=f"{fname} (Rel %)"
-            ))
+                name=f"{fname} (Rel %)")
+            )
             rel_score_fig.add_trace(go.Scatter(
                 x=result_rel["positions"],
                 y=[threshold * 100]*len(result_rel["positions"]),
@@ -236,11 +233,13 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
             ))
 
     st.markdown("#### Absolute Mode Scores")
-    st.plotly_chart(abs_score_fig, use_container_width=True)
+    st.plotly_chart(abs_score_fig, use_container_width=True, key="abs_trace")
 
     st.markdown("#### Relative Mode Scores (%)")
-    st.plotly_chart(rel_score_fig, use_container_width=True)
-    st.plotly_chart(score_fig, use_container_width=True)
+    st.plotly_chart(rel_score_fig, use_container_width=True, key="rel_trace")
+
+    st.markdown("### Change Point Summary Table (Selected Bead)")
+    st.dataframe(pd.DataFrame(final_summary))
 
     global_summary = []
     for fname, info in global_summary_dict.items():
