@@ -90,7 +90,7 @@ if uploaded_zip:
     columns = sample_df.columns.tolist()
 
     seg_col = st.sidebar.selectbox("Column for Segmentation", columns, key="seg_col")
-    seg_thresh = st.sidebar.number_input("Segmentation Threshold", value=0.0, key="seg_thresh")
+    seg_thresh = st.sidebar.number_input("Segmentation Threshold", value=3.0, key="seg_thresh")
     signal_col = st.sidebar.selectbox("Signal Column for Analysis", columns, key="sig_col")
 
     analysis_percent = st.sidebar.slider("% of Signal Length to Consider for NOK Decision", min_value=10, max_value=100, value=50, step=10)
@@ -120,14 +120,14 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
     if use_smooth:
-        win_len = st.sidebar.number_input("Smoothing Window Length (odd)", 3, 199, 11, step=2)
-        poly = st.sidebar.number_input("Polynomial Order", 1, 5, 2)
+        win_len = st.sidebar.number_input("Smoothing Window Length (odd)", 3, 199, 199, step=2)
+        poly = st.sidebar.number_input("Polynomial Order", 1, 5, 5)
 
-    win_size = st.sidebar.number_input("Window Size (Analysis)", 10, 1000, 100, step=10)
-    step = st.sidebar.number_input("Step Size", 1, 500, 20)
+    win_size = st.sidebar.number_input("Window Size (Analysis)", 10, 1000, 350, step=10)
+    step = st.sidebar.number_input("Step Size", 1, 500, 175)
     metric = st.sidebar.selectbox("Metric", ["Mean", "Median", "Standard Deviation"])
     mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"])
-    thresh_input = st.sidebar.text_input("Change Magnitude Threshold", value="0.1")
+    thresh_input = st.sidebar.text_input("Change Magnitude Threshold", value="15")
     thresh = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
 
     bead_options = sorted(raw_beads.keys())
