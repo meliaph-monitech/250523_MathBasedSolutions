@@ -127,7 +127,12 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
     metric = st.sidebar.selectbox("Change Point Metric", ["Mean", "Median", "Standard Deviation"])
     threshold_mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"])
     threshold_label = "Change Magnitude Threshold" if threshold_mode == "Absolute" else "Change Magnitude Threshold (%)"
-    threshold = float(st.sidebar.text_input(threshold_label, value="0.10000"))
+    st.sidebar.markdown("""
+Use the plots below to understand the score distributions for your data. Adjust the threshold accordingly:
+- For **Absolute**, observe the actual value range.
+- For **Relative**, aim for a small % (e.g., 3–10%).
+""")
+threshold = float(st.sidebar.text_input(threshold_label, value="0.10000"))
     if threshold_mode == "Relative (%)":
         threshold /= 100.0
 
