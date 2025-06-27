@@ -203,10 +203,10 @@ selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.
 
     st.plotly_chart(fig, use_container_width=True, key="signal_plot")
 
-    if use_smoothing:
+if use_smoothing:
         st.markdown("### Smoothed Signal Plot")
         fig_smooth = go.Figure()
-        for fname, raw_signal in test_beads[selected_bead]:
+    for fname, raw_signal in test_beads[selected_bead]:
             if smoothing_method == "Savitzky-Golay" and len(raw_signal) >= window_length:
                 smooth_signal = savgol_filter(raw_signal, window_length, polyorder)
                 fig_smooth.add_trace(go.Scatter(
@@ -214,7 +214,7 @@ selected_bead = st.selectbox("Select Bead Number to Display", sorted(test_beads.
                     mode='lines',
                     name=f"{fname} (Smoothed)"
                 ))
-        st.plotly_chart(fig_smooth, use_container_width=True, key="smoothed_signal_plot")
+        st.plotly_chart(fig_smooth, use_container_width=True, key="smooth_plot")
     st.markdown("### Change Magnitude Score Trace (Per Window)")
     st.plotly_chart(score_fig, use_container_width=True, key="main_score_trace")
 
