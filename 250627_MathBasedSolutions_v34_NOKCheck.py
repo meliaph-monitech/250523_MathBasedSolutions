@@ -8,6 +8,7 @@ from collections import defaultdict
 from scipy.signal import savgol_filter
 import shutil
 
+# --- Utility: File Extraction ---
 def extract_zip(uploaded_file, extract_dir):
     if os.path.exists(extract_dir):
         for file in os.listdir(extract_dir):
@@ -23,19 +24,6 @@ def extract_zip(uploaded_file, extract_dir):
         zip_ref.extractall(extract_dir)
 
     return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
-
-# # --- Utility: File Extraction ---
-# def extract_zip(uploaded_file, extract_dir):
-#     if os.path.exists(extract_dir):
-#         for file in os.listdir(extract_dir):
-#             os.remove(os.path.join(extract_dir, file))
-#     else:
-#         os.makedirs(extract_dir)
-
-#     with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
-#         zip_ref.extractall(extract_dir)
-
-#     return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
 
 # --- Utility: Bead Segmentation ---
 def segment_beads(df, column, threshold):
@@ -94,7 +82,7 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
 
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
-st.title("Change Point Detector with Aluminum/Copper Detection")
+st.title("Change Point Detector with Aluminum & Copper Filtering and Advanced NOK Flagging")
 
 st.sidebar.header("Upload and Segmentation")
 uploaded_zip = st.sidebar.file_uploader("Upload ZIP of CSVs", type="zip")
@@ -142,13 +130,14 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     split_length = st.session_state["split_length"]
     analysis_percent = st.session_state["analysis_percent"]
 
-    st.sidebar.header("Aluminum Filtering")
+    st.sidebar.header("Filtering")
     alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Above)", value=5000.0)
+    cu_ignore_thresh = st.sidebar.number_input("Copper Ignore Threshold (Filter Above)", value=8000.0)
 
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
     if use_smooth:
-        win_len = st.sidebar.number_input("Smoothing Window Length (odd)", 3, 399, 199, step=2)
+        win_len = st.sidebar.number_input("Smoothing Window Length (odd)", 3, 199, 199, step=2)
         polyorder = st.sidebar.number_input("Polynomial Order", 1, 5, 5)
 
     win_size = st.sidebar.number_input("Window Size (Analysis)", 10, 1000, 350, 10)
@@ -172,15 +161,27 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
             sig = raw_sig.copy()
+
             if bead_type == "Aluminum":
                 sig = sig[sig < alu_ignore_thresh]
+            elif bead_type == "Copper":
+                sig = sig[sig < cu_ignore_thresh]
+
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
             result = analyze_change_points(sig, win_size, step_size, metric, threshold, mode)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
-            nok = any(end < nok_region_limit for start, end, _ in result["change_points"])
-            if nok:
+
+            # Determine NOK, NOK_Check, or OK
+            cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
+            if len(cp_in_region) == 0:
+                flag = "OK"
+            elif len(cp_in_region) == 1:
+                flag = "NOK"
+                global_summary[fname].append(f"{bead_num} ({bead_type})")
+            else:
+                flag = "NOK_Check"
                 global_summary[fname].append(f"{bead_num} ({bead_type})")
 
             table_data.append({
@@ -188,13 +189,12 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
                 "Bead": bead_num,
                 "Bead Type": bead_type,
                 "Change Points": len(result["change_points"]),
-                "Result": "NOK" if nok else "OK"
+                "Flag": flag
             })
 
             if bead_num == selected_bead:
-                # Add shaded areas to BACK
                 for start, end, _ in result["change_points"]:
-                    raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.05, layer="below", line_width=0)
+                    raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
 
                 raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)", line=dict(width=1)))
                 color = 'red' if result["change_points"] else 'black'
@@ -202,7 +202,8 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
 
                 y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
                 score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
-                score_fig.add_trace(go.Scatter(x=result["positions"], y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]), mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
+                score_fig.add_trace(go.Scatter(x=result["positions"], y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]),
+                                               mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
 
     st.plotly_chart(raw_fig, use_container_width=True)
     st.subheader("Score Trace (Change Magnitude per Window)")
@@ -211,6 +212,6 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     st.subheader("Change Point Summary Table")
     st.dataframe(pd.DataFrame(table_data))
 
-    st.subheader("Global NOK Beads Summary")
-    global_table = pd.DataFrame([{ "File": k, "NOK Beads": ", ".join(v) } for k, v in global_summary.items()])
+    st.subheader("Global NOK and NOK_Check Beads Summary")
+    global_table = pd.DataFrame([{ "File": k, "NOK/NOK_Check Beads": ", ".join(v) } for k, v in global_summary.items()])
     st.dataframe(global_table)
