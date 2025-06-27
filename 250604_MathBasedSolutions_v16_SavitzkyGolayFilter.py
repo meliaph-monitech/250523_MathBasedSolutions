@@ -91,7 +91,7 @@ if ok_zip and test_zip:
 if "ok_beads_raw" in st.session_state and "test_beads_raw" in st.session_state:
     st.sidebar.header("Savitzky-Golay Filtering")
 
-    window_length = st.sidebar.slider("Window Length", 3, 51, 7, step=2)
+    window_length = st.sidebar.slider("Window Length", 3, 101, 7, step=2)
     polyorder = st.sidebar.slider("Polynomial Order", 1, 5, 3)
 
     # Display options
