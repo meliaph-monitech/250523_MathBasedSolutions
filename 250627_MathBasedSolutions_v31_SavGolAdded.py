@@ -122,6 +122,16 @@ if test_zip:
 
 if "test_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     test_beads = st.session_state["test_beads"]
+raw_beads = test_beads.copy()
+smoothed_beads = defaultdict(list)
+
+# Preprocess smoothing upfront
+for bead_num in sorted(raw_beads.keys()):
+    for fname, raw_signal in raw_beads[bead_num]:
+        signal = raw_signal.copy()
+        if use_smoothing and smoothing_method == "Savitzky-Golay" and len(signal) >= window_length:
+            signal = pd.Series(savgol_filter(signal, window_length, polyorder))
+        smoothed_beads[bead_num].append((fname, signal))
 
     st.sidebar.header("Change Point Detection Settings")
     window_size = st.sidebar.number_input("Window Size (points)", min_value=10, value=100, step=10)
@@ -137,7 +147,7 @@ if "test_beads" in st.session_state and st.session_state.get("analysis_ready", F
 if use_smoothing:
     st.markdown("### Smoothed Signal Plot")
     fig_smooth = go.Figure()
-    for fname, raw_signal in test_beads[selected_bead]:
+    for fname, raw_signal in raw_beads[selected_bead]:
         if smoothing_method == "Savitzky-Golay" and len(raw_signal) >= window_length:
             smooth_signal = savgol_filter(raw_signal, window_length, polyorder)
             fig_smooth.add_trace(go.Scatter(
@@ -153,8 +163,8 @@ if use_smoothing:
     abs_score_fig = go.Figure()
     rel_score_fig = go.Figure()
 
-    for bead_num in sorted(test_beads.keys()):
-        for fname, signal in test_beads[bead_num]:
+    for bead_num in sorted(smoothed_beads.keys()):
+        for fname, signal in smoothed_beads[bead_num]:
             result_abs = analyze_change_points(signal, window_size, step_size, metric, threshold, mode="Absolute")
             result_rel = analyze_change_points(signal, window_size, step_size, metric, threshold, mode="Relative")
 
