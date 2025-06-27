@@ -121,6 +121,21 @@ if test_zip:
         st.success("✅ Bead segmentation completed.")
 
 if "test_beads" in st.session_state and st.session_state.get("analysis_ready", False):
+    st.sidebar.header("Change Point Detection Settings")
+    window_size = st.sidebar.number_input("Window Size (points)", min_value=10, value=100, step=10)
+    step_size = st.sidebar.number_input("Step Size (points)", min_value=1, value=20, step=1)
+    metric = st.sidebar.selectbox("Change Point Metric", ["Mean", "Median", "Standard Deviation"])
+    threshold_mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"])
+    threshold_label = "Change Magnitude Threshold" if threshold_mode == "Absolute" else "Change Magnitude Threshold (%)"
+    threshold = float(st.sidebar.text_input(threshold_label, value="0.10000"))
+    if threshold_mode == "Relative (%)":
+        threshold /= 100.0
+
+    use_smoothing = st.sidebar.checkbox("Apply Signal Smoothing", value=False)
+    if use_smoothing:
+        smoothing_method = st.sidebar.selectbox("Smoothing Method", ["Savitzky-Golay"])
+        window_length = st.sidebar.number_input("Smoothing Window Length (odd number)", min_value=3, value=11, step=2)
+        polyorder = st.sidebar.number_input("Polynomial Order", min_value=1, value=2, step=1)
     test_beads = st.session_state["test_beads"]
 raw_beads = test_beads.copy()
 smoothed_beads = defaultdict(list)
