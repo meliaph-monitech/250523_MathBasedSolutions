@@ -1,3 +1,5 @@
+# Change Point Detector with Spike and Slope Discriminator for NOK_False
+
 import streamlit as st
 import zipfile
 import os
@@ -62,23 +64,17 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
         else:
             raise ValueError("Invalid metric")
 
-        diff = v2 - v1  # signed difference
+        diff = v2 - v1
+        abs_diff = abs(diff)
+        rel_diff = abs_diff / max(abs(v1), 1e-6)
 
-        if diff > 0:  # Only consider rising changes
-            abs_diff = diff
-            rel_diff = diff / max(abs(v1), 1e-6)
+        abs_scores.append(abs_diff)
+        rel_scores.append(rel_diff)
+        positions.append(start + window_size)
 
-            abs_scores.append(abs_diff)
-            rel_scores.append(rel_diff)
-            positions.append(start + window_size)
-
-            check_diff = abs_diff if mode == "Absolute" else rel_diff
-            if check_diff > threshold:
-                change_points.append((start, start + 2 * window_size - 1, check_diff))
-        else:
-            abs_scores.append(0)
-            rel_scores.append(0)
-            positions.append(start + window_size)
+        check_diff = abs_diff if mode == "Absolute" else rel_diff
+        if check_diff > threshold and diff > 0:
+            change_points.append((start, start + 2 * window_size - 1, check_diff, diff / window_size))  # includes slope
 
     return {
         "positions": positions,
@@ -89,7 +85,7 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
 
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
-st.title("Change Point Detector with NOK_False Filtering")
+st.title("Change Point Detector with NOK_False Filtering (Spike & Slope)")
 
 st.sidebar.header("Upload and Segmentation")
 uploaded_zip = st.sidebar.file_uploader("Upload ZIP of CSVs", type="zip")
@@ -105,7 +101,6 @@ if uploaded_zip:
     seg_thresh = st.sidebar.number_input("Segmentation Threshold", value=3.0)
     signal_col = st.sidebar.selectbox("Signal Column for Analysis", columns)
     analysis_percent = st.sidebar.slider("% of Signal Length to Consider for NOK Decision", 10, 100, 50, 10)
-    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.3, 0.9, 0.5, 0.05)
 
     if st.sidebar.button("Segment Beads"):
         with open("uploaded.zip", "wb") as f:
@@ -127,22 +122,27 @@ if uploaded_zip:
         max_jump_idx = np.argmax(ratios)
         split_length = sorted_lengths[max_jump_idx]
 
-        st.session_state["raw_beads"] = raw_beads
-        st.session_state["analysis_ready"] = True
-        st.session_state["split_length"] = split_length
-        st.session_state["analysis_percent"] = analysis_percent
-        st.session_state["spike_discriminator_ratio"] = spike_discriminator_ratio
+        st.session_state.update({
+            "raw_beads": raw_beads,
+            "analysis_ready": True,
+            "split_length": split_length,
+            "analysis_percent": analysis_percent
+        })
+
         st.success(f"✅ Bead segmentation completed. Split length for Al/Cu: {split_length}")
 
 if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     raw_beads = st.session_state["raw_beads"]
     split_length = st.session_state["split_length"]
     analysis_percent = st.session_state["analysis_percent"]
-    spike_discriminator_ratio = st.session_state["spike_discriminator_ratio"]
 
     st.sidebar.header("Filtering")
     alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Above)", value=5000.0)
     cu_ignore_thresh = st.sidebar.number_input("Copper Ignore Threshold (Filter Above)", value=8000.0)
+
+    st.sidebar.header("Spike & Slope Discriminator")
+    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (%)", 0.1, 0.9, 0.5, 0.05)
+    slope_threshold = st.sidebar.number_input("Slope Threshold (Min Steepness for True NOK)", min_value=0.0001, value=0.01, step=0.001)
 
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
@@ -172,10 +172,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
             sig = raw_sig.copy()
 
-            if bead_type == "Aluminum":
-                sig = np.minimum(sig, alu_ignore_thresh)
-            elif bead_type == "Copper":
-                sig = np.minimum(sig, cu_ignore_thresh)
+            sig = np.minimum(sig, alu_ignore_thresh) if bead_type == "Aluminum" else np.minimum(sig, cu_ignore_thresh)
 
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
@@ -184,24 +181,20 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
 
             cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
-            signal_mean = sig.mean()
             flag = "OK"
+            signal_mean = sig.mean()
 
-            if len(cp_in_region) == 1 or len(cp_in_region) > 1:
-                high_points = 0
-                total_points = 0
+            if cp_in_region:
                 for cp in cp_in_region:
-                    cp_start, cp_end, _ = cp
+                    cp_start, cp_end, _, slope = cp
                     cp_values = sig.iloc[cp_start:cp_end+1]
-                    high_points += (cp_values > signal_mean).sum()
-                    total_points += len(cp_values)
-                if total_points > 0 and (high_points / total_points) > spike_discriminator_ratio:
-                    flag = "NOK_False"
-                elif len(cp_in_region) == 1:
-                    flag = "NOK"
-                    global_summary[fname].append(f"{bead_num} ({bead_type})")
+                    high_ratio = (cp_values > signal_mean).sum() / len(cp_values)
+
+                    if high_ratio > spike_discriminator_ratio or slope < slope_threshold:
+                        flag = "NOK_False"
+                        break
                 else:
-                    flag = "NOK_Check"
+                    flag = "NOK" if len(cp_in_region) == 1 else "NOK_Check"
                     global_summary[fname].append(f"{bead_num} ({bead_type})")
 
             table_data.append({
@@ -213,11 +206,10 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             })
 
             if bead_num == selected_bead:
-                for start, end, _ in result["change_points"]:
+                for start, end, _, _ in result["change_points"]:
                     raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
                 raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)", line=dict(width=1)))
-                color = 'red' if result["change_points"] else 'black'
-                raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
+                raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color='black')))
 
                 y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
                 score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
