@@ -76,7 +76,6 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
             if check_diff > threshold:
                 change_points.append((start, start + 2 * window_size - 1, check_diff))
         else:
-            # Still append scores for visualization consistency, set to 0 if not rising
             abs_scores.append(0)
             rel_scores.append(0)
             positions.append(start + window_size)
@@ -88,10 +87,9 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
         "change_points": change_points
     }
 
-
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
-st.title("Change Point Detector with Aluminum & Copper Filtering and Advanced NOK Flagging")
+st.title("Change Point Detector with NOK_False Filtering")
 
 st.sidebar.header("Upload and Segmentation")
 uploaded_zip = st.sidebar.file_uploader("Upload ZIP of CSVs", type="zip")
@@ -107,6 +105,7 @@ if uploaded_zip:
     seg_thresh = st.sidebar.number_input("Segmentation Threshold", value=3.0)
     signal_col = st.sidebar.selectbox("Signal Column for Analysis", columns)
     analysis_percent = st.sidebar.slider("% of Signal Length to Consider for NOK Decision", 10, 100, 50, 10)
+    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.3, 0.9, 0.5, 0.05)
 
     if st.sidebar.button("Segment Beads"):
         with open("uploaded.zip", "wb") as f:
@@ -132,12 +131,14 @@ if uploaded_zip:
         st.session_state["analysis_ready"] = True
         st.session_state["split_length"] = split_length
         st.session_state["analysis_percent"] = analysis_percent
+        st.session_state["spike_discriminator_ratio"] = spike_discriminator_ratio
         st.success(f"✅ Bead segmentation completed. Split length for Al/Cu: {split_length}")
 
 if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     raw_beads = st.session_state["raw_beads"]
     split_length = st.session_state["split_length"]
     analysis_percent = st.session_state["analysis_percent"]
+    spike_discriminator_ratio = st.session_state["spike_discriminator_ratio"]
 
     st.sidebar.header("Filtering")
     alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Above)", value=5000.0)
@@ -182,16 +183,26 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             result = analyze_change_points(sig, win_size, step_size, metric, threshold, mode)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
 
-            # Determine NOK, NOK_Check, or OK
             cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
-            if len(cp_in_region) == 0:
-                flag = "OK"
-            elif len(cp_in_region) == 1:
-                flag = "NOK"
-                global_summary[fname].append(f"{bead_num} ({bead_type})")
-            else:
-                flag = "NOK_Check"
-                global_summary[fname].append(f"{bead_num} ({bead_type})")
+            signal_mean = sig.mean()
+            flag = "OK"
+
+            if len(cp_in_region) == 1 or len(cp_in_region) > 1:
+                high_points = 0
+                total_points = 0
+                for cp in cp_in_region:
+                    cp_start, cp_end, _ = cp
+                    cp_values = sig.iloc[cp_start:cp_end+1]
+                    high_points += (cp_values > signal_mean).sum()
+                    total_points += len(cp_values)
+                if total_points > 0 and (high_points / total_points) > spike_discriminator_ratio:
+                    flag = "NOK_False"
+                elif len(cp_in_region) == 1:
+                    flag = "NOK"
+                    global_summary[fname].append(f"{bead_num} ({bead_type})")
+                else:
+                    flag = "NOK_Check"
+                    global_summary[fname].append(f"{bead_num} ({bead_type})")
 
             table_data.append({
                 "File": fname,
@@ -204,7 +215,6 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             if bead_num == selected_bead:
                 for start, end, _ in result["change_points"]:
                     raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
-
                 raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)", line=dict(width=1)))
                 color = 'red' if result["change_points"] else 'black'
                 raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
