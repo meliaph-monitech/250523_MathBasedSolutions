@@ -105,7 +105,7 @@ if uploaded_zip:
     seg_thresh = st.sidebar.number_input("Segmentation Threshold", value=3.0)
     signal_col = st.sidebar.selectbox("Signal Column for Analysis", columns)
     analysis_percent = st.sidebar.slider("% of Signal Length to Consider for NOK Decision", 10, 100, 50, 10)
-    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.3, 0.9, 0.5, 0.05)
+    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.05, 0.9, 0.5, 0.05)
 
     if st.sidebar.button("Segment Beads"):
         with open("uploaded.zip", "wb") as f:
