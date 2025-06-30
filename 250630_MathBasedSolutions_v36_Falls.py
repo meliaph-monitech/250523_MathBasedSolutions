@@ -62,16 +62,24 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
         else:
             raise ValueError("Invalid metric")
 
-        abs_diff = abs(v1 - v2)
-        rel_diff = abs_diff / max(abs(v1), 1e-6)
+        diff = v2 - v1  # signed difference
 
-        abs_scores.append(abs_diff)
-        rel_scores.append(rel_diff)
-        positions.append(start + window_size)
+        if diff > 0:  # Only consider rising changes
+            abs_diff = diff
+            rel_diff = diff / max(abs(v1), 1e-6)
 
-        check_diff = abs_diff if mode == "Absolute" else rel_diff
-        if check_diff > threshold:
-            change_points.append((start, start + 2 * window_size - 1, check_diff))
+            abs_scores.append(abs_diff)
+            rel_scores.append(rel_diff)
+            positions.append(start + window_size)
+
+            check_diff = abs_diff if mode == "Absolute" else rel_diff
+            if check_diff > threshold:
+                change_points.append((start, start + 2 * window_size - 1, check_diff))
+        else:
+            # Still append scores for visualization consistency, set to 0 if not rising
+            abs_scores.append(0)
+            rel_scores.append(0)
+            positions.append(start + window_size)
 
     return {
         "positions": positions,
@@ -79,6 +87,7 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
         "rel_scores": rel_scores,
         "change_points": change_points
     }
+
 
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
