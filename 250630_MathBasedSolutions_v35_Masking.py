@@ -163,9 +163,9 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             sig = raw_sig.copy()
 
             if bead_type == "Aluminum":
-                sig = sig[sig < alu_ignore_thresh]
+                sig = np.minimum(sig, alu_ignore_thresh)
             elif bead_type == "Copper":
-                sig = sig[sig < cu_ignore_thresh]
+                sig = np.minimum(sig, cu_ignore_thresh)
 
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
