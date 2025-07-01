@@ -68,7 +68,8 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
 # Streamlit App
 st.title("Detailed Change Point Inspection per Bead")
 
-uploaded_zip = st.file_uploader("Upload ZIP of CSVs", type="zip")
+with st.sidebar:
+    uploaded_zip = st.file_uploader("Upload ZIP of CSVs", type="zip")
 
 if uploaded_zip:
     with zipfile.ZipFile(uploaded_zip, 'r') as zip_ref:
@@ -114,7 +115,8 @@ if uploaded_zip:
     split_length = sorted_lengths[max_jump_idx]
 
     bead_options = sorted(raw_beads.keys())
-    selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
+    with st.sidebar:
+        selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
 
     raw_fig = go.Figure()
     score_fig = go.Figure()
