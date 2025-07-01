@@ -8,6 +8,8 @@ from collections import defaultdict
 from scipy.signal import savgol_filter
 import shutil
 
+st.set_page_config(layout="wide")
+
 # Utility: Extract ZIP
 def extract_zip(uploaded_zip, extract_dir="data"):
     if os.path.exists(extract_dir):
