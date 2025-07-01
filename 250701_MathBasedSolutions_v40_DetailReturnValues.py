@@ -223,8 +223,7 @@ if uploaded_zip:
     st.plotly_chart(raw_fig, use_container_width=True)
     st.subheader("Score Trace with Threshold")
     st.plotly_chart(score_fig, use_container_width=True)
-    st.subheader("Detailed Per-Window Change Point Analysis")
-    st.dataframe(detailed_windows_df)
+
 
     df_vis = detailed_windows_df.copy()
     df_vis['Color'] = np.where(df_vis['Triggered Change Point'], 'Triggered', 'Not Triggered')
@@ -266,3 +265,6 @@ if uploaded_zip:
     )
 
     st.plotly_chart(scatter_fig, use_container_width=True)
+
+    st.subheader("Detailed Per-Window Change Point Analysis")
+    st.dataframe(detailed_windows_df)
