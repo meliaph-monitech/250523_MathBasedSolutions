@@ -167,10 +167,20 @@ if uploaded_zip:
                 if downgrade:
                     flag = "OK"
 
-            if flag == "NOK":
-                global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
-            elif flag == "OK_Check":
-                global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
+            # if flag == "NOK":
+            #     global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
+            # elif flag == "OK_Check":
+            #     global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
+            # After all re-checks:
+            if cp_in_region_filtered:
+                has_nok = any(cp[2] > threshold for cp in cp_in_region_filtered)
+                has_ok_check = any(cp[2] < -threshold for cp in cp_in_region_filtered)
+            
+                if has_nok:
+                    global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
+                elif has_ok_check:
+                    global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
+
 
     st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
     if global_summary:
