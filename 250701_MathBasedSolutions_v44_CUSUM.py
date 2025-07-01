@@ -36,36 +36,31 @@ def segment_beads(df, column, threshold):
             i += 1
     return list(zip(start_indices, end_indices))
 
-# Utility: Change Point Detection
-def analyze_change_points(signal, window_size, step_size, metric, threshold):
-    signal = signal.reset_index(drop=True) if isinstance(signal, pd.Series) else pd.Series(signal)
+# CUSUM change point detection
+def cusum_change_points(signal, threshold_factor=5):
+    mean = np.mean(signal)
+    std = np.std(signal)
+    threshold = threshold_factor * std
+    cumsum_pos = np.zeros(len(signal))
+    cumsum_neg = np.zeros(len(signal))
     change_points = []
-    diff_scores, rel_scores, positions = [], [], []
-    for start in range(0, len(signal) - 2 * window_size + 1, step_size):
-        curr = signal[start:start + window_size]
-        next_ = signal[start + window_size:start + 2 * window_size]
-        if metric == "Mean":
-            v1, v2 = curr.mean(), next_.mean()
-        elif metric == "Median":
-            v1, v2 = curr.median(), next_.median()
-        elif metric == "Standard Deviation":
-            v1, v2 = curr.std(), next_.std()
-        diff = v2 - v1
-        rel_diff = diff / max(abs(v1), 1e-6)
-        diff_scores.append(diff)
-        rel_scores.append(rel_diff)
-        positions.append(start + window_size)
-        if abs(rel_diff) > threshold:
-            change_points.append((start, start + 2 * window_size - 1, rel_diff))
-    return {
-        "positions": positions,
-        "diff_scores": diff_scores,
-        "rel_scores": rel_scores,
-        "change_points": change_points
-    }
+
+    for i in range(1, len(signal)):
+        deviation = signal[i] - mean
+        cumsum_pos[i] = max(0, cumsum_pos[i-1] + deviation)
+        cumsum_neg[i] = min(0, cumsum_neg[i-1] + deviation)
+
+        if cumsum_pos[i] > threshold:
+            change_points.append((i, 'Positive'))
+            cumsum_pos[i] = 0
+        elif cumsum_neg[i] < -threshold:
+            change_points.append((i, 'Negative'))
+            cumsum_neg[i] = 0
+
+    return change_points
 
 # Streamlit App
-st.title("Detailed Change Point Inspection per Bead")
+st.title("CUSUM-Based Change Point Inspection per Bead")
 
 with st.sidebar:
     uploaded_zip = st.file_uploader("Upload ZIP of CSVs", type="zip")
@@ -82,16 +77,7 @@ if uploaded_zip:
     seg_thresh = 3.0
     analysis_percent = 100
     use_smooth = True
-    polyorder = 5
-
-    # Recommended hard-coded values
-    # win_len = 199
-    # win_size = 350
-    # step_size = 175
-    
-    metric = "Median"
-    thresh_input = "15"
-    threshold = float(thresh_input) / 100
+    polyorder = 3
 
     with open("uploaded.zip", "wb") as f:
         f.write(uploaded_zip.getbuffer())
@@ -119,53 +105,23 @@ if uploaded_zip:
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-
-            # Dynamic Window Settings
             raw_length = len(raw_sig)
-            # Dynamically adjust parameters
             win_len = min(raw_length // 20 * 2 + 1, 199)
-            win_len = max(win_len, 5) # Ensures the minimum window length is at least 5
-    
-            win_size = max(raw_length // 10, 50)
-            step_size = max(win_size // 2, 10)
-            
+            win_len = max(win_len, 5)
+
             sig = raw_sig.copy()
             if use_smooth and len(sig) >= win_len:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
-            result = analyze_change_points(sig, win_size, step_size, metric, threshold)
-            nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
-            cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
-
+            change_points = cusum_change_points(sig, threshold_factor=5)
             flag = "OK"
-            for cp in cp_in_region:
-                if cp[2] > threshold:
+            for idx, direction in change_points:
+                if direction == "Positive":
                     flag = "NOK"
                     break
-                elif cp[2] < -threshold:
+                elif direction == "Negative":
                     flag = "OK_Check"
                     break
-
-            if flag in ["NOK", "OK_Check"]:
-                clip_threshold = np.percentile(raw_sig, 75)
-                filtered_array = np.where(raw_sig > clip_threshold, clip_threshold, raw_sig)
-                if use_smooth and len(filtered_array) >= win_len:
-                    filtered_array = savgol_filter(filtered_array, win_len, polyorder)
-                filtered_sig = pd.Series(filtered_array)
-
-                filtered_result = analyze_change_points(filtered_sig, win_size, step_size, metric, threshold)
-                cp_in_region_filtered = [cp for cp in filtered_result["change_points"] if cp[1] < nok_region_limit]
-
-                downgrade = True
-                for cp in cp_in_region_filtered:
-                    if cp[2] > threshold and flag == "NOK":
-                        downgrade = False
-                        break
-                    elif cp[2] < -threshold and flag == "OK_Check":
-                        downgrade = False
-                        break
-                if downgrade:
-                    flag = "OK"
 
             if flag == "NOK":
                 global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
@@ -190,94 +146,54 @@ if uploaded_zip:
         selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
 
     raw_fig = go.Figure()
-    score_fig = go.Figure()
     detailed_inspection = []
 
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
+            raw_length = len(raw_sig)
+            win_len = min(raw_length // 20 * 2 + 1, 199)
+            win_len = max(win_len, 5)
+
             sig = raw_sig.copy()
             if use_smooth and len(sig) >= win_len:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
-            result = analyze_change_points(sig, win_size, step_size, metric, threshold)
-            nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
-            cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
+            change_points = cusum_change_points(sig, threshold_factor=5)
 
             flag = "OK"
-            for cp in cp_in_region:
-                if cp[2] > threshold:
+            for idx, direction in change_points:
+                if direction == "Positive":
                     flag = "NOK"
                     break
-                elif cp[2] < -threshold:
+                elif direction == "Negative":
                     flag = "OK_Check"
                     break
 
             color = 'red' if flag == "NOK" else 'blue' if flag == "OK_Check" else 'black'
 
-            if flag in ["NOK", "OK_Check"]:
-                clip_threshold = np.percentile(raw_sig, 75)
-                filtered_array = np.where(raw_sig > clip_threshold, clip_threshold, raw_sig)
-                if use_smooth and len(filtered_array) >= win_len:
-                    filtered_array = savgol_filter(filtered_array, win_len, polyorder)
-                plot_sig = pd.Series(filtered_array)
-            else:
-                plot_sig = sig
+            for idx, direction in change_points:
+                raw_fig.add_vline(x=idx, line_color="red", opacity=0.5)
 
             raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)"))
-            raw_fig.add_trace(go.Scatter(y=plot_sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
+            raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (smoothed)", line=dict(color=color)))
 
-            for start, end, _ in result["change_points"]:
-                raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below")
-
-            y_scores = [v * 100 for v in result["rel_scores"]]
-            score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Rel Diff (%)"))
-
-            signal_clean = sig.reset_index(drop=True)
-            records = []
-            for start in range(0, len(signal_clean) - 2 * win_size + 1, step_size):
-                curr = signal_clean[start:start + win_size]
-                next_ = signal_clean[start + win_size:start + 2 * win_size]
-                if metric == "Mean":
-                    v1, v2 = curr.mean(), next_.mean()
-                elif metric == "Median":
-                    v1, v2 = curr.median(), next_.median()
-                elif metric == "Standard Deviation":
-                    v1, v2 = curr.std(), next_.std()
-                diff = v2 - v1
-                rel_diff = diff / max(abs(v1), 1e-6)
-                triggered = abs(rel_diff) > threshold
-                records.append({
-                    "File": fname,
-                    "Bead": bead_num,
-                    "Bead Type": bead_type,
-                    "Start Index": start,
-                    "End Index": start + 2 * win_size - 1,
-                    "Metric Window 1": v1,
-                    "Metric Window 2": v2,
-                    "Diff": diff,
-                    "Rel Diff (%)": rel_diff * 100,
-                    "Threshold": threshold * 100,
-                    "Triggered Change Point": triggered,
-                    "Flag": flag
-                })
-            bead_df = pd.DataFrame(records)
+            bead_df = pd.DataFrame({
+                "File": fname,
+                "Bead": bead_num,
+                "Bead Type": bead_type,
+                "Change Point Index": [idx for idx, _ in change_points],
+                "Direction": [direction for _, direction in change_points],
+                "Flag": flag
+            })
             detailed_inspection.append(bead_df)
 
-    detailed_windows_df = pd.concat(detailed_inspection, ignore_index=True)
+    if detailed_inspection:
+        detailed_windows_df = pd.concat(detailed_inspection, ignore_index=True)
+        st.subheader("Raw and Smoothed Signal with Change Points (CUSUM)")
+        st.plotly_chart(raw_fig, use_container_width=True)
 
-    st.subheader("Raw and Smoothed Signal with Change Points")
-    st.plotly_chart(raw_fig, use_container_width=True)
-
-    st.subheader("Score Trace with Threshold")
-    score_fig.add_hline(
-        y=threshold * 100,
-        line_dash="dash",
-        line_color="orange",
-        annotation_text="Threshold",
-        annotation_position="top left"
-    )
-    st.plotly_chart(score_fig, use_container_width=True)
-
-    st.subheader("Detailed Per-Window Change Point Analysis")
-    st.dataframe(detailed_windows_df)
+        st.subheader("CUSUM Detected Change Points Table")
+        st.dataframe(detailed_windows_df)
+    else:
+        st.info("No beads to display.")
