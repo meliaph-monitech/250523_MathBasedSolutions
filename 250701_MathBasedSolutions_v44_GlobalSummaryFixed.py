@@ -76,7 +76,6 @@ if uploaded_zip:
         with zip_ref.open(first_csv) as f:
             sample_df = pd.read_csv(f)
 
-    # Parameters
     seg_col = sample_df.columns[2]
     signal_col = sample_df.columns[0]
     seg_thresh = 3.0
@@ -84,11 +83,6 @@ if uploaded_zip:
     use_smooth = True
     polyorder = 5
 
-    # Recommended hard-coded values
-    # win_len = 199
-    # win_size = 350
-    # step_size = 175
-    
     metric = "Median"
     thresh_input = "15"
     threshold = float(thresh_input) / 100
@@ -114,40 +108,40 @@ if uploaded_zip:
     split_length = sorted_lengths[max_jump_idx]
     bead_options = sorted(raw_beads.keys())
 
-    global_summary = defaultdict(lambda: {"NOK": [], "OK_Check": []})
+    corrected_summary = defaultdict(lambda: {"Corrected NOK": [], "Corrected OK_Check": []})
+
+    bead_flags_per_file = defaultdict(lambda: defaultdict(str))
 
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
-            cp_in_region_filtered = []
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
 
-            # Dynamic Window Settings
             raw_length = len(raw_sig)
-            # Dynamically adjust parameters
             win_len = min(raw_length // 20 * 2 + 1, 199)
-            win_len = max(win_len, 5) # Ensures the minimum window length is at least 5
-    
+            win_len = max(win_len, 5)
             win_size = max(raw_length // 10, 50)
             step_size = max(win_size // 2, 10)
-            
+
             sig = raw_sig.copy()
             if use_smooth and len(sig) >= win_len:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
             result = analyze_change_points(sig, win_size, step_size, metric, threshold)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
-            cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
+            cp_in_region_initial = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
 
-            flag = "OK"
-            for cp in cp_in_region:
+            flag_initial = "OK"
+            for cp in cp_in_region_initial:
                 if cp[2] > threshold:
-                    flag = "NOK"
+                    flag_initial = "NOK"
                     break
                 elif cp[2] < -threshold:
-                    flag = "OK_Check"
+                    flag_initial = "OK_Check"
                     break
 
-            if flag in ["NOK", "OK_Check"]:
+            flag_corrected = flag_initial
+
+            if flag_initial in ["NOK", "OK_Check"]:
                 clip_threshold = np.percentile(raw_sig, 75)
                 filtered_array = np.where(raw_sig > clip_threshold, clip_threshold, raw_sig)
                 if use_smooth and len(filtered_array) >= win_len:
@@ -157,46 +151,34 @@ if uploaded_zip:
                 filtered_result = analyze_change_points(filtered_sig, win_size, step_size, metric, threshold)
                 cp_in_region_filtered = [cp for cp in filtered_result["change_points"] if cp[1] < nok_region_limit]
 
-                downgrade = True
-                for cp in cp_in_region_filtered:
-                    if cp[2] > threshold and flag == "NOK":
-                        downgrade = False
-                        break
-                    elif cp[2] < -threshold and flag == "OK_Check":
-                        downgrade = False
-                        break
-                if downgrade:
-                    flag = "OK"
-
-            # if flag == "NOK":
-            #     global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
-            # elif flag == "OK_Check":
-            #     global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
-    
-            # After all re-checks:
-            if cp_in_region_filtered:
                 has_nok = any(cp[2] > threshold for cp in cp_in_region_filtered)
                 has_ok_check = any(cp[2] < -threshold for cp in cp_in_region_filtered)
-            
-                if has_nok:
-                    global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
-                elif has_ok_check:
-                    global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
 
+                if flag_initial == "NOK" and not has_nok:
+                    flag_corrected = "OK"
+                elif flag_initial == "OK_Check" and not has_ok_check:
+                    flag_corrected = "OK"
 
-    st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
-    if global_summary:
-        global_table = pd.DataFrame([
+            if flag_corrected == "NOK":
+                corrected_summary[fname]["Corrected NOK"].append(f"{bead_num} ({bead_type})")
+            elif flag_corrected == "OK_Check":
+                corrected_summary[fname]["Corrected OK_Check"].append(f"{bead_num} ({bead_type})")
+
+            bead_flags_per_file[fname][bead_num] = flag_corrected
+
+    st.subheader("Corrected NOK and OK_Check Beads Summary Across All Beads")
+    if corrected_summary:
+        corrected_table = pd.DataFrame([
             {
                 "File": file,
-                "NOK (Positive)": ", ".join(beads["NOK"]) if beads["NOK"] else "-",
-                "NOK (Negative)": ", ".join(beads["OK_Check"]) if beads["OK_Check"] else "-"
+                "Corrected NOK": ", ".join(beads["Corrected NOK"]) if beads["Corrected NOK"] else "-",
+                "Corrected OK_Check": ", ".join(beads["Corrected OK_Check"]) if beads["Corrected OK_Check"] else "-"
             }
-            for file, beads in global_summary.items()
+            for file, beads in corrected_summary.items()
         ])
-        st.dataframe(global_table)
+        st.dataframe(corrected_table)
     else:
-        st.write("✅ No NOK or OK_Check beads detected across all files and beads.")
+        st.write("✅ No NOK or OK_Check beads detected across all files and beads after recheck.")
 
     with st.sidebar:
         selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
@@ -208,23 +190,21 @@ if uploaded_zip:
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
+
+            raw_length = len(raw_sig)
+            win_len = min(raw_length // 20 * 2 + 1, 199)
+            win_len = max(win_len, 5)
+            win_size = max(raw_length // 10, 50)
+            step_size = max(win_size // 2, 10)
+
             sig = raw_sig.copy()
             if use_smooth and len(sig) >= win_len:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
             result = analyze_change_points(sig, win_size, step_size, metric, threshold)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
-            cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
 
-            flag = "OK"
-            for cp in cp_in_region:
-                if cp[2] > threshold:
-                    flag = "NOK"
-                    break
-                elif cp[2] < -threshold:
-                    flag = "OK_Check"
-                    break
-
+            flag = bead_flags_per_file[fname][bead_num]
             color = 'red' if flag == "NOK" else 'blue' if flag == "OK_Check" else 'black'
 
             if flag in ["NOK", "OK_Check"]:
