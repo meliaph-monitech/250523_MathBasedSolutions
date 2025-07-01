@@ -227,7 +227,17 @@ if uploaded_zip:
                 raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
 
             raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)"))
-            raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
+            # raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
+            # Decide what to plot for the smoothed/filtered line
+            if flag in ["NOK", "OK_Check"]:
+                # Plot the filtered + smoothed signal used during re-check
+                plot_sig = filtered_sig
+            else:
+                # Plot the smoothed raw signal
+                plot_sig = sig
+            
+            raw_fig.add_trace(go.Scatter(y=plot_sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
+
 
             y_scores = [v * 100 for v in result["rel_scores"]]
             score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Rel Diff (%)"))
