@@ -138,9 +138,9 @@ if uploaded_zip:
             # if flag in ["NOK", "OK_Check"]:
             #     global_summary[fname].append(f"{bead_num} ({bead_type})")
             if flag == "NOK":
-                global_summary[fname]["NOK (Rise)"].append(f"{bead_num} ({bead_type})")
+                global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
             elif flag == "OK_Check":
-                global_summary[fname]["NOK (Dip)"].append(f"{bead_num} ({bead_type})")
+                global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
 
     # st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
     # if global_summary:
@@ -156,8 +156,8 @@ if uploaded_zip:
         global_table = pd.DataFrame([
             {
                 "File": file,
-                "NOK Beads": ", ".join(beads["NOK"]) if beads["NOK"] else "-",
-                "OK_Check Beads": ", ".join(beads["OK_Check"]) if beads["OK_Check"] else "-"
+                "NOK (Positive)": ", ".join(beads["NOK"]) if beads["NOK"] else "-",
+                "NOK (Negative)": ", ".join(beads["OK_Check"]) if beads["OK_Check"] else "-"
             }
             for file, beads in global_summary.items()
         ])
