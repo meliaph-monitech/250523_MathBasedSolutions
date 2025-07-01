@@ -38,7 +38,7 @@ def segment_beads(df, column, threshold):
 
 # Utility: Change Point Detection
 def analyze_change_points(signal, window_size, step_size, metric, threshold):
-    signal = signal.dropna().reset_index(drop=True)
+    signal = signal.reset_index(drop=True) if isinstance(signal, pd.Series) else pd.Series(signal)
     change_points = []
     diff_scores, rel_scores, positions = [], [], []
     for start in range(0, len(signal) - 2 * window_size + 1, step_size):
@@ -76,13 +76,11 @@ if uploaded_zip:
         with zip_ref.open(first_csv) as f:
             sample_df = pd.read_csv(f)
 
-    # Hard-coded stable parameters
+    # Parameters
     seg_col = sample_df.columns[2]
     signal_col = sample_df.columns[0]
     seg_thresh = 3.0
     analysis_percent = 100
-    # alu_ignore_thresh = 3.0
-    # cu_ignore_thresh = 3.0
     use_smooth = True
     win_len = 199
     polyorder = 5
@@ -111,25 +109,22 @@ if uploaded_zip:
     ratios = [sorted_lengths[i+1]/sorted_lengths[i] for i in range(len(sorted_lengths)-1)]
     max_jump_idx = np.argmax(ratios)
     split_length = sorted_lengths[max_jump_idx]
-
     bead_options = sorted(raw_beads.keys())
 
-    # Global NOK and OK_Check summary
-    # global_summary = defaultdict(list)
     global_summary = defaultdict(lambda: {"NOK": [], "OK_Check": []})
 
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            # clip_threshold = np.percentile(raw_sig, 75)
-            # sig = np.minimum(raw_sig, clip_threshold)
-            # sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
+
             sig = raw_sig.copy()
-            if use_smooth and len(sig) >= win_size:
+            if use_smooth and len(sig) >= win_len:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
+
             result = analyze_change_points(sig, win_size, step_size, metric, threshold)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
             cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
+
             flag = "OK"
             for cp in cp_in_region:
                 if cp[2] > threshold:
@@ -138,27 +133,17 @@ if uploaded_zip:
                 elif cp[2] < -threshold:
                     flag = "OK_Check"
                     break
-            # if flag in ["NOK", "OK_Check"]:
-            #     global_summary[fname].append(f"{bead_num} ({bead_type})")
-            if flag == "NOK":
-                global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
-            elif flag == "OK_Check":
-                global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
 
-            # --- Re-check with filtered signal for flagged signals ---
             if flag in ["NOK", "OK_Check"]:
                 clip_threshold = np.percentile(raw_sig, 75)
-                # filtered_sig = np.minimum(raw_sig, clip_threshold)
-                # if use_smooth and len(filtered_sig) >= win_size:
-                #     filtered_sig = pd.Series(savgol_filter(filtered_sig, win_len, polyorder))
-                filtered_array = np.minimum(raw_sig, clip_threshold)
+                filtered_array = np.where(raw_sig > clip_threshold, clip_threshold, raw_sig)
                 if use_smooth and len(filtered_array) >= win_len:
                     filtered_array = savgol_filter(filtered_array, win_len, polyorder)
-                filtered_sig = pd.Series(filtered_array, index=np.arange(len(filtered_array)))   
+                filtered_sig = pd.Series(filtered_array)
 
                 filtered_result = analyze_change_points(filtered_sig, win_size, step_size, metric, threshold)
                 cp_in_region_filtered = [cp for cp in filtered_result["change_points"] if cp[1] < nok_region_limit]
-                # Check if change points persist after filtering
+
                 downgrade = True
                 for cp in cp_in_region_filtered:
                     if cp[2] > threshold and flag == "NOK":
@@ -170,16 +155,11 @@ if uploaded_zip:
                 if downgrade:
                     flag = "OK"
 
-    
-    # st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
-    # if global_summary:
-    #     global_table = pd.DataFrame([
-    #         {"File": file, "NOK/OK_Check Beads": ", ".join(beads)}
-    #         for file, beads in global_summary.items()
-    #     ])
-    #     st.dataframe(global_table)
-    # else:
-    #     st.write("✅ No NOK or OK_Check beads detected across all files and all beads.")
+            if flag == "NOK":
+                global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
+            elif flag == "OK_Check":
+                global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
+
     st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
     if global_summary:
         global_table = pd.DataFrame([
@@ -192,9 +172,7 @@ if uploaded_zip:
         ])
         st.dataframe(global_table)
     else:
-        st.write("✅ No NOK or OK_Check beads detected across all files and all beads.")
-
-
+        st.write("✅ No NOK or OK_Check beads detected across all files and beads.")
 
     with st.sidebar:
         selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
@@ -206,16 +184,14 @@ if uploaded_zip:
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            # clip_threshold = np.percentile(raw_sig, 75)
-            # sig = np.minimum(raw_sig, clip_threshold)
-            # sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
             sig = raw_sig.copy()
-            if use_smooth and len(sig) >= win_size:
+            if use_smooth and len(sig) >= win_len:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
             result = analyze_change_points(sig, win_size, step_size, metric, threshold)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
             cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
+
             flag = "OK"
             for cp in cp_in_region:
                 if cp[2] > threshold:
@@ -227,26 +203,25 @@ if uploaded_zip:
 
             color = 'red' if flag == "NOK" else 'blue' if flag == "OK_Check" else 'black'
 
-            for start, end, _ in result["change_points"]:
-                raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
+            if flag in ["NOK", "OK_Check"]:
+                clip_threshold = np.percentile(raw_sig, 75)
+                filtered_array = np.where(raw_sig > clip_threshold, clip_threshold, raw_sig)
+                if use_smooth and len(filtered_array) >= win_len:
+                    filtered_array = savgol_filter(filtered_array, win_len, polyorder)
+                plot_sig = pd.Series(filtered_array)
+            else:
+                plot_sig = sig
 
             raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)"))
-            # raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
-            # Decide what to plot for the smoothed/filtered line
-            if flag in ["NOK", "OK_Check"]:
-                # Plot the filtered + smoothed signal used during re-check
-                plot_sig = filtered_sig
-            else:
-                # Plot the smoothed raw signal
-                plot_sig = sig
-            
             raw_fig.add_trace(go.Scatter(y=plot_sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
 
+            for start, end, _ in result["change_points"]:
+                raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below")
 
             y_scores = [v * 100 for v in result["rel_scores"]]
             score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Rel Diff (%)"))
 
-            signal_clean = sig.dropna().reset_index(drop=True)
+            signal_clean = sig.reset_index(drop=True)
             records = []
             for start in range(0, len(signal_clean) - 2 * win_size + 1, step_size):
                 curr = signal_clean[start:start + win_size]
