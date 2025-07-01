@@ -87,7 +87,7 @@ if uploaded_zip:
     win_len = 99
     polyorder = 5
     win_size = 200
-    step_size = 200
+    step_size = 100
     metric = "Median"
     thresh_input = "15"
     threshold = float(thresh_input) / 100
