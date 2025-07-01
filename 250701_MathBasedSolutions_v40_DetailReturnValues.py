@@ -75,22 +75,23 @@ if uploaded_zip:
         first_csv = [name for name in zip_ref.namelist() if name.endswith('.csv')][0]
         with zip_ref.open(first_csv) as f:
             sample_df = pd.read_csv(f)
-    seg_col = sample_df.columns[2]
-    signal_col = sample_df.columns[0]
 
-    seg_thresh = 3.0
-    analysis_percent = 100
-    alu_ignore_thresh = 3.0
-    cu_ignore_thresh = 3.0
-    use_smooth = True
-    win_len = 199
-    polyorder = 5
-    win_size = 350
-    step_size = 175
-    metric = "Median"
-    mode = "Relative (%)"
-    thresh_input = "15"
-    threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
+    with st.sidebar:
+        seg_col = sample_df.columns[2]
+        signal_col = sample_df.columns[0]
+        seg_thresh = 3.0
+        analysis_percent = 100
+        alu_ignore_thresh = 3.0
+        cu_ignore_thresh = 3.0
+        use_smooth = True
+        win_len = 199
+        polyorder = 5
+        win_size = 350
+        step_size = 175
+        metric = "Median"
+        mode = "Relative (%)"
+        thresh_input = "15"
+        threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
 
     with open("uploaded.zip", "wb") as f:
         f.write(uploaded_zip.getbuffer())
@@ -115,7 +116,10 @@ if uploaded_zip:
     bead_options = sorted(raw_beads.keys())
     selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
 
+    raw_fig = go.Figure()
+    score_fig = go.Figure()
     detailed_inspection = []
+
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
@@ -126,6 +130,28 @@ if uploaded_zip:
                 sig = np.minimum(sig, cu_ignore_thresh)
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
+
+            result = analyze_change_points(sig, win_size, step_size, metric, threshold, mode)
+            nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
+            cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
+            flag = "OK" if len(cp_in_region) == 0 else ("NOK" if len(cp_in_region) == 1 else "NOK_Check")
+
+            for start, end, _ in result["change_points"]:
+                raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
+
+            raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)"))
+            raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)"))
+
+            y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
+            score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
+            score_fig.add_trace(go.Scatter(
+                x=result["positions"],
+                y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]),
+                mode='lines',
+                name="Threshold",
+                line=dict(color="orange", dash="dash")
+            ))
+
             signal_clean = sig.dropna().reset_index(drop=True)
             records = []
             for start in range(0, len(signal_clean) - 2 * win_size + 1, step_size):
@@ -152,24 +178,29 @@ if uploaded_zip:
                     "Abs Diff": abs_diff,
                     "Rel Diff (%)": rel_diff * 100,
                     "Threshold": threshold * 100 if mode == "Relative (%)" else threshold,
-                    "Triggered Change Point": triggered
+                    "Triggered Change Point": triggered,
+                    "Flag": flag
                 })
             bead_df = pd.DataFrame(records)
             detailed_inspection.append(bead_df)
 
     detailed_windows_df = pd.concat(detailed_inspection, ignore_index=True)
+    st.subheader("Raw and Smoothed Signal with Change Points")
+    st.plotly_chart(raw_fig, use_container_width=True)
+    st.subheader("Score Trace with Threshold")
+    st.plotly_chart(score_fig, use_container_width=True)
+
     st.subheader("Detailed Per-Window Change Point Analysis")
     st.dataframe(detailed_windows_df)
 
     df_vis = detailed_windows_df.copy()
     df_vis['Color'] = np.where(df_vis['Triggered Change Point'], 'Triggered', 'Not Triggered')
-
     fig = px.scatter(
         df_vis,
         x="Start Index",
         y="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff",
         color="Color",
-        hover_data=["File", "Bead", "Bead Type", "Metric Window 1", "Metric Window 2", "Threshold"],
+        hover_data=["File", "Bead", "Bead Type", "Metric Window 1", "Metric Window 2", "Threshold", "Flag"],
         title=f"Window-based Change Detection for Bead {selected_bead}"
     )
     fig.add_hline(
