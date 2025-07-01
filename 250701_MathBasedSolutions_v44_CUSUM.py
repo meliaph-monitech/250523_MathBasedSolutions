@@ -38,15 +38,21 @@ def segment_beads(df, column, threshold):
 
 # CUSUM change point detection
 def cusum_change_points(signal, threshold_factor=5):
-    mean = np.mean(signal)
-    std = np.std(signal)
+    smoothed_signal = pd.Series(savgol_filter(signal, window_length=199, polyorder=3))
+    mean = np.mean(smoothed_signal)
+    std = np.std(smoothed_signal)
     threshold = threshold_factor * std
-    cumsum_pos = np.zeros(len(signal))
-    cumsum_neg = np.zeros(len(signal))
+    dead_zone = 0.05 * std  # Filter tiny fluctuations
+
+    cumsum_pos = np.zeros(len(smoothed_signal))
+    cumsum_neg = np.zeros(len(smoothed_signal))
     change_points = []
 
-    for i in range(1, len(signal)):
-        deviation = signal[i] - mean
+    for i in range(1, len(smoothed_signal)):
+        deviation = smoothed_signal[i] - mean
+        if abs(deviation) < dead_zone:
+            deviation = 0
+
         cumsum_pos[i] = max(0, cumsum_pos[i-1] + deviation)
         cumsum_neg[i] = min(0, cumsum_neg[i-1] + deviation)
 
@@ -58,6 +64,7 @@ def cusum_change_points(signal, threshold_factor=5):
             cumsum_neg[i] = 0
 
     return change_points
+
 
 # Streamlit App
 st.title("CUSUM-Based Change Point Inspection per Bead")
