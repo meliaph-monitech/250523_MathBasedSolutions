@@ -70,51 +70,28 @@ st.title("Detailed Change Point Inspection per Bead")
 with st.sidebar:
     uploaded_zip = st.file_uploader("Upload ZIP of CSVs", type="zip")
 
-# if uploaded_zip:
-#     with zipfile.ZipFile(uploaded_zip, 'r') as zip_ref:
-#         first_csv = [name for name in zip_ref.namelist() if name.endswith('.csv')][0]
-#         with zip_ref.open(first_csv) as f:
-#             sample_df = pd.read_csv(f)
-
-#     # Hard-coded parameters as requested
-#     seg_col = sample_df.columns[2]
-#     signal_col = sample_df.columns[0]
-#     seg_thresh = 3.0
-#     analysis_percent = 100
-#     alu_ignore_thresh = 3.0
-#     cu_ignore_thresh = 3.0
-#     use_smooth = True
-#     win_len = 199
-#     polyorder = 5
-#     win_size = 350
-#     step_size = 175
-#     metric = "Median"
-#     mode = "Relative (%)"
-#     thresh_input = "15"
-#     threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
 if uploaded_zip:
     with zipfile.ZipFile(uploaded_zip, 'r') as zip_ref:
         first_csv = [name for name in zip_ref.namelist() if name.endswith('.csv')][0]
         with zip_ref.open(first_csv) as f:
             sample_df = pd.read_csv(f)
 
+    # Hard-coded parameters as requested
+    seg_col = sample_df.columns[2]
+    signal_col = sample_df.columns[0]
+    seg_thresh = 3.0
+    analysis_percent = 100
+    alu_ignore_thresh = 3.0
+    cu_ignore_thresh = 3.0
     use_smooth = True
+    win_len = 199
+    polyorder = 5
+    win_size = 350
+    step_size = 175
     metric = "Median"
     mode = "Relative (%)"
-    seg_col = sample_df.columns[2]
-    seg_thresh = 3.0
-    
-    with st.sidebar: 
-        signal_col = st.selectbox("Column for Signal Analysis (signal_col)", sample_df.columns, index=0)
-        analysis_percent = st.number_input("Analysis Percent (analysis_percent)", min_value=1, max_value=100, value=100, step=1)
-        alu_ignore_thresh = st.number_input("Aluminum Ignore Threshold (alu_ignore_thresh)", value=3.0, step=0.1)
-        cu_ignore_thresh = st.number_input("Copper Ignore Threshold (cu_ignore_thresh)", value=3.0, step=0.1)
-        win_len = st.number_input("Smoothing Window Length (win_len, odd)", min_value=3, max_value=999, value=199, step=2)
-        polyorder = st.number_input("Smoothing Polynomial Order (polyorder)", min_value=1, max_value=5, value=5, step=1)
-        win_size = st.number_input("Window Size (win_size)", min_value=10, max_value=5000, value=350, step=10)
-        step_size = st.number_input("Step Size (step_size)", min_value=1, max_value=1000, value=175, step=5)
-        thresh_input = st.text_input("Change Magnitude Threshold (%)", "15")
-        threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
+    thresh_input = "15"
+    threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
 
     with open("uploaded.zip", "wb") as f:
         f.write(uploaded_zip.getbuffer())
