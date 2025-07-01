@@ -4,7 +4,6 @@ import os
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
-import plotly.express as px
 from collections import defaultdict
 from scipy.signal import savgol_filter
 import shutil
@@ -77,22 +76,22 @@ if uploaded_zip:
         with zip_ref.open(first_csv) as f:
             sample_df = pd.read_csv(f)
 
-    with st.sidebar:
-        seg_col = sample_df.columns[2]
-        signal_col = sample_df.columns[0]
-        seg_thresh = 3.0
-        analysis_percent = 100
-        alu_ignore_thresh = 3.0
-        cu_ignore_thresh = 3.0
-        use_smooth = True
-        win_len = 199
-        polyorder = 5
-        win_size = 350
-        step_size = 175
-        metric = "Median"
-        mode = "Relative (%)"
-        thresh_input = "15"
-        threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
+    # Hard-coded parameters as requested
+    seg_col = sample_df.columns[2]
+    signal_col = sample_df.columns[0]
+    seg_thresh = 3.0
+    analysis_percent = 100
+    alu_ignore_thresh = 3.0
+    cu_ignore_thresh = 3.0
+    use_smooth = True
+    win_len = 199
+    polyorder = 5
+    win_size = 350
+    step_size = 175
+    metric = "Median"
+    mode = "Relative (%)"
+    thresh_input = "15"
+    threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
 
     with open("uploaded.zip", "wb") as f:
         f.write(uploaded_zip.getbuffer())
@@ -115,15 +114,11 @@ if uploaded_zip:
     split_length = sorted_lengths[max_jump_idx]
 
     bead_options = sorted(raw_beads.keys())
-    with st.sidebar:
-        selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
 
-    raw_fig = go.Figure()
-    score_fig = go.Figure()
-    detailed_inspection = []
+    # --- GLOBAL NOK/NOK_CHECK SUMMARY ACROSS ALL BEADS ---
     global_summary = defaultdict(list)
 
-    for bead_num in [selected_bead]:
+    for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
             sig = raw_sig.copy()
@@ -141,13 +136,45 @@ if uploaded_zip:
             if flag in ["NOK", "NOK_Check"]:
                 global_summary[fname].append(f"{bead_num} ({bead_type})")
 
+    st.subheader("Global NOK and NOK_Check Beads Summary Across All Beads")
+    if global_summary:
+        global_table = pd.DataFrame([
+            {"File": file, "NOK/NOK_Check Beads": ", ".join(beads)}
+            for file, beads in global_summary.items()
+        ])
+        st.dataframe(global_table)
+    else:
+        st.write("✅ No NOK or NOK_Check beads detected across all files and all beads.")
+
+    with st.sidebar:
+        selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
+
+    raw_fig = go.Figure()
+    score_fig = go.Figure()
+    detailed_inspection = []
+
+    for bead_num in [selected_bead]:
+        for fname, raw_sig in raw_beads[bead_num]:
+            bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
+            sig = raw_sig.copy()
+            if bead_type == "Aluminum":
+                sig = np.minimum(sig, alu_ignore_thresh)
+            else:
+                sig = np.minimum(sig, cu_ignore_thresh)
+            if use_smooth and len(sig) >= win_size:
+                sig = pd.Series(savgol_filter(sig, win_len, polyorder))
+
+            result = analyze_change_points(sig, win_size, step_size, metric, threshold, mode)
+            nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
+            cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
+            flag = "OK" if len(cp_in_region) == 0 else ("NOK" if len(cp_in_region) == 1 else "NOK_Check")
+
             for start, end, _ in result["change_points"]:
                 raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
 
             raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)"))
             color = 'red' if flag != "OK" else 'black'
             raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
-            # raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)"))
 
             y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
             score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
@@ -196,7 +223,6 @@ if uploaded_zip:
     st.plotly_chart(raw_fig, use_container_width=True)
     st.subheader("Score Trace with Threshold")
     st.plotly_chart(score_fig, use_container_width=True)
-
     st.subheader("Detailed Per-Window Change Point Analysis")
     st.dataframe(detailed_windows_df)
 
@@ -204,46 +230,27 @@ if uploaded_zip:
     df_vis['Color'] = np.where(df_vis['Triggered Change Point'], 'Triggered', 'Not Triggered')
 
     scatter_fig = go.Figure()
-    
-    # Subset for triggered
+
+    # Triggered
     triggered = df_vis[df_vis['Triggered Change Point'] == True]
     scatter_fig.add_trace(go.Scatter(
         x=triggered["Start Index"],
         y=triggered["Rel Diff (%)"] if mode == "Relative (%)" else triggered["Abs Diff"],
         mode='markers',
         marker=dict(color='red'),
-        name='Triggered',
-        hovertext=[
-            f"File: {a}<br>Bead: {b}<br>Type: {c}<br>Win1: {d:.3f}<br>Win2: {e:.3f}<br>Threshold: {f:.2f}<br>Flag: {g}"
-            for a,b,c,d,e,f,g in zip(
-                triggered["File"], triggered["Bead"], triggered["Bead Type"],
-                triggered["Metric Window 1"], triggered["Metric Window 2"],
-                triggered["Threshold"], triggered["Flag"]
-            )
-        ],
-        hoverinfo="text"
+        name='Triggered'
     ))
-    
-    # Subset for not triggered
+
+    # Not Triggered
     not_triggered = df_vis[df_vis['Triggered Change Point'] == False]
     scatter_fig.add_trace(go.Scatter(
         x=not_triggered["Start Index"],
         y=not_triggered["Rel Diff (%)"] if mode == "Relative (%)" else not_triggered["Abs Diff"],
         mode='markers',
-        marker=dict(color='blue'),
-        name='Not Triggered',
-        hovertext=[
-            f"File: {a}<br>Bead: {b}<br>Type: {c}<br>Win1: {d:.3f}<br>Win2: {e:.3f}<br>Threshold: {f:.2f}<br>Flag: {g}"
-            for a,b,c,d,e,f,g in zip(
-                not_triggered["File"], not_triggered["Bead"], not_triggered["Bead Type"],
-                not_triggered["Metric Window 1"], not_triggered["Metric Window 2"],
-                not_triggered["Threshold"], not_triggered["Flag"]
-            )
-        ],
-        hoverinfo="text"
+        marker=dict(color='black'),
+        name='Not Triggered'
     ))
-    
-    # Add threshold reference line
+
     scatter_fig.add_hline(
         y=threshold*100 if mode=="Relative (%)" else threshold,
         line_dash="dash",
@@ -251,38 +258,11 @@ if uploaded_zip:
         annotation_text="Threshold",
         annotation_position="top left"
     )
-    
+
     scatter_fig.update_layout(
         title=f"Window-based Change Detection for Bead {selected_bead}",
         xaxis_title="Start Index",
         yaxis_title="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff"
     )
-    
-    st.plotly_chart(scatter_fig, use_container_width=True)
 
-    # fig = px.scatter(
-    #     df_vis,
-    #     x="Start Index",
-    #     y="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff",
-    #     color="Color",
-    #     hover_data=["File", "Bead", "Bead Type", "Metric Window 1", "Metric Window 2", "Threshold", "Flag"],
-    #     title=f"Window-based Change Detection for Bead {selected_bead}"
-    # )
-    # fig.add_hline(
-    #     y=threshold*100 if mode=="Relative (%)" else threshold,
-    #     line_dash="dash",
-    #     line_color="orange",
-    #     annotation_text="Threshold",
-    #     annotation_position="top left"
-    # )
-    # st.plotly_chart(fig, use_container_width=True)
-    st.subheader("Global NOK and NOK_Check Beads Summary")
-    
-    if global_summary:
-        global_table = pd.DataFrame([
-            {"File": file, "NOK/NOK_Check Beads": ", ".join(beads)}
-            for file, beads in global_summary.items()
-        ])
-        st.dataframe(global_table)
-    else:
-        st.write("✅ No NOK or NOK_Check beads detected across all files.")
+    st.plotly_chart(scatter_fig, use_container_width=True)
