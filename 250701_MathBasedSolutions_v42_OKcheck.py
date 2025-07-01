@@ -115,7 +115,8 @@ if uploaded_zip:
     bead_options = sorted(raw_beads.keys())
 
     # Global NOK and OK_Check summary
-    global_summary = defaultdict(list)
+    # global_summary = defaultdict(list)
+    global_summary = defaultdict(lambda: {"NOK": [], "OK_Check": []})
 
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
@@ -134,18 +135,37 @@ if uploaded_zip:
                 elif cp[2] < -threshold:
                     flag = "OK_Check"
                     break
-            if flag in ["NOK", "OK_Check"]:
-                global_summary[fname].append(f"{bead_num} ({bead_type})")
+            # if flag in ["NOK", "OK_Check"]:
+            #     global_summary[fname].append(f"{bead_num} ({bead_type})")
+            if flag == "NOK":
+                global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
+            elif flag == "OK_Check":
+                global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
 
+    # st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
+    # if global_summary:
+    #     global_table = pd.DataFrame([
+    #         {"File": file, "NOK/OK_Check Beads": ", ".join(beads)}
+    #         for file, beads in global_summary.items()
+    #     ])
+    #     st.dataframe(global_table)
+    # else:
+    #     st.write("✅ No NOK or OK_Check beads detected across all files and all beads.")
     st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
     if global_summary:
         global_table = pd.DataFrame([
-            {"File": file, "NOK/OK_Check Beads": ", ".join(beads)}
+            {
+                "File": file,
+                "NOK Beads": ", ".join(beads["NOK"]) if beads["NOK"] else "-",
+                "OK_Check Beads": ", ".join(beads["OK_Check"]) if beads["OK_Check"] else "-"
+            }
             for file, beads in global_summary.items()
         ])
         st.dataframe(global_table)
     else:
         st.write("✅ No NOK or OK_Check beads detected across all files and all beads.")
+
+
 
     with st.sidebar:
         selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
