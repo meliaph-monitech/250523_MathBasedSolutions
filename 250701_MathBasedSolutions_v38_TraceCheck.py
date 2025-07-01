@@ -140,8 +140,8 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     step_size = st.sidebar.number_input("Step Size", 1, 500, 175)
     threshold = st.sidebar.number_input("Change Magnitude Threshold (%)", 1.0, 100.0, 15.0, 0.5)
 
-    slope_discriminator = st.sidebar.slider("Slope Discriminator Threshold", 0.0, 1.0, 0.1, 0.01)
-    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.05, 0.9, 0.5, 0.05)
+    slope_discriminator = st.sidebar.slider("Slope Discriminator Threshold", 0.0000, 0.1000, 0.0001, 0.0001)
+    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.05, 0.99, 0.5, 0.05)
 
     bead_options = sorted(raw_beads.keys())
     selected_bead = st.selectbox("Select Bead Number to Display", bead_options)
