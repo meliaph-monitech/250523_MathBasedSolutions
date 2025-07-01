@@ -65,7 +65,7 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold):
     }
 
 # Streamlit App
-st.title("Detailed Change Point Inspection per Bead")
+st.title("Integrated Insight V45")
 
 with st.sidebar:
     uploaded_zip = st.file_uploader("Upload ZIP of CSVs", type="zip")
