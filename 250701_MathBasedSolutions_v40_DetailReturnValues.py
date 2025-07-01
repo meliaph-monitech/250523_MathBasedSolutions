@@ -231,55 +231,26 @@ if uploaded_zip:
 
     scatter_fig = go.Figure()
 
-    # # Triggered
-    # triggered = df_vis[df_vis['Triggered Change Point'] == True]
-    # scatter_fig.add_trace(go.Scatter(
-    #     x=triggered["Start Index"],
-    #     y=triggered["Rel Diff (%)"] if mode == "Relative (%)" else triggered["Abs Diff"],
-    #     mode='markers',
-    #     marker=dict(color='red'),
-    #     name='Triggered'
-    # ))
-
-    # # Not Triggered
-    # not_triggered = df_vis[df_vis['Triggered Change Point'] == False]
-    # scatter_fig.add_trace(go.Scatter(
-    #     x=not_triggered["Start Index"],
-    #     y=not_triggered["Rel Diff (%)"] if mode == "Relative (%)" else not_triggered["Abs Diff"],
-    #     mode='markers',
-    #     marker=dict(color='black'),
-    #     name='Not Triggered'
-    # ))
-
-    # For triggered
+    # Triggered
+    triggered = df_vis[df_vis['Triggered Change Point'] == True]
     scatter_fig.add_trace(go.Scatter(
         x=triggered["Start Index"],
         y=triggered["Rel Diff (%)"] if mode == "Relative (%)" else triggered["Abs Diff"],
         mode='markers',
         marker=dict(color='red'),
-        name='Triggered',
-        hovertext=[
-            f"File: {row['File']}<br>Bead: {row['Bead']}<br>Type: {row['Bead Type']}<br>Win1: {row['Metric Window 1']:.2f}<br>Win2: {row['Metric Window 2']:.2f}<br>Abs Diff: {row['Abs Diff']:.2f}<br>Rel Diff: {row['Rel Diff (%)']:.2f}%<br>Threshold: {row['Threshold']:.2f}<br>Flag: {row['Flag']}"
-            for _, row in triggered.iterrows()
-        ],
-        hoverinfo="text"
+        name='Triggered'
     ))
-    
-    # For not triggered
+
+    # Not Triggered
+    not_triggered = df_vis[df_vis['Triggered Change Point'] == False]
     scatter_fig.add_trace(go.Scatter(
         x=not_triggered["Start Index"],
         y=not_triggered["Rel Diff (%)"] if mode == "Relative (%)" else not_triggered["Abs Diff"],
         mode='markers',
         marker=dict(color='black'),
-        name='Not Triggered',
-        hovertext=[
-            f"File: {row['File']}<br>Bead: {row['Bead']}<br>Type: {row['Bead Type']}<br>Win1: {row['Metric Window 1']:.2f}<br>Win2: {row['Metric Window 2']:.2f}<br>Abs Diff: {row['Abs Diff']:.2f}<br>Rel Diff: {row['Rel Diff (%)']:.2f}%<br>Threshold: {row['Threshold']:.2f}<br>Flag: {row['Flag']}"
-            for _, row in not_triggered.iterrows()
-        ],
-        hoverinfo="text"
+        name='Not Triggered'
     ))
-
-
+    
     scatter_fig.add_hline(
         y=threshold*100 if mode=="Relative (%)" else threshold,
         line_dash="dash",
