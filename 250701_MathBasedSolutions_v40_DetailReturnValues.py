@@ -140,7 +140,9 @@ if uploaded_zip:
                 raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
 
             raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)"))
-            raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)"))
+            color = 'red' if flag != "OK" else 'black'
+            raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
+            # raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)"))
 
             y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
             score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
