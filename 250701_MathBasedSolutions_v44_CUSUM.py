@@ -37,7 +37,7 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 # CUSUM change point detection
-def cusum_change_points(signal, threshold_factor=5):
+def cusum_change_points(signal, threshold_factor=50):
     smoothed_signal = pd.Series(savgol_filter(signal, window_length=199, polyorder=3))
     mean = np.mean(smoothed_signal)
     std = np.std(smoothed_signal)
