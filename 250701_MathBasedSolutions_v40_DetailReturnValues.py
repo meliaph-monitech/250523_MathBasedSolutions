@@ -121,6 +121,7 @@ if uploaded_zip:
     raw_fig = go.Figure()
     score_fig = go.Figure()
     detailed_inspection = []
+    global_summary = defaultdict(list)
 
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
@@ -137,6 +138,8 @@ if uploaded_zip:
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
             cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
             flag = "OK" if len(cp_in_region) == 0 else ("NOK" if len(cp_in_region) == 1 else "NOK_Check")
+            if flag in ["NOK", "NOK_Check"]:
+                global_summary[fname].append(f"{bead_num} ({bead_type})")
 
             for start, end, _ in result["change_points"]:
                 raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
@@ -273,3 +276,13 @@ if uploaded_zip:
     #     annotation_position="top left"
     # )
     # st.plotly_chart(fig, use_container_width=True)
+    st.subheader("Global NOK and NOK_Check Beads Summary")
+    
+    if global_summary:
+        global_table = pd.DataFrame([
+            {"File": file, "NOK/NOK_Check Beads": ", ".join(beads)}
+            for file, beads in global_summary.items()
+        ])
+        st.dataframe(global_table)
+    else:
+        st.write("✅ No NOK or NOK_Check beads detected across all files.")
