@@ -43,53 +43,38 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 # --- Core: Change Point Detection ---
-def analyze_change_points(signal, window_size, step_size, metric, threshold, mode):
+def analyze_change_points(signal, window_size, step_size, threshold):
     signal = signal.dropna().reset_index(drop=True)
     change_points = []
-    abs_scores, rel_scores = [], []
-    positions = []
+    rel_scores, positions = [], []
 
     for start in range(0, len(signal) - 2 * window_size + 1, step_size):
         curr = signal[start:start + window_size]
         next_ = signal[start + window_size:start + 2 * window_size]
 
-        if metric == "Mean":
-            v1, v2 = curr.mean(), next_.mean()
-        elif metric == "Median":
-            v1, v2 = curr.median(), next_.median()
-        elif metric == "Standard Deviation":
-            v1, v2 = curr.std(), next_.std()
-        else:
-            raise ValueError("Invalid metric")
+        v1, v2 = curr.median(), next_.median()
+        diff = v2 - v1
 
-        diff = v2 - v1  # signed difference
-
-        if diff > 0:  # Only consider rising changes
-            abs_diff = diff
+        if diff > 0:
             rel_diff = diff / max(abs(v1), 1e-6)
-
-            abs_scores.append(abs_diff)
-            rel_scores.append(rel_diff)
+            rel_scores.append(rel_diff * 100)
             positions.append(start + window_size)
 
-            check_diff = abs_diff if mode == "Absolute" else rel_diff
-            if check_diff > threshold:
-                change_points.append((start, start + 2 * window_size - 1, check_diff))
+            if rel_diff > (threshold / 100):
+                change_points.append((start, start + 2 * window_size - 1, rel_diff * 100))
         else:
-            abs_scores.append(0)
             rel_scores.append(0)
             positions.append(start + window_size)
 
     return {
         "positions": positions,
-        "abs_scores": abs_scores,
         "rel_scores": rel_scores,
         "change_points": change_points
     }
 
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
-st.title("Change Point Detector with NOK_False Filtering")
+st.title("Refined Change Point Detector (Valley and Slope Filtering)")
 
 st.sidebar.header("Upload and Segmentation")
 uploaded_zip = st.sidebar.file_uploader("Upload ZIP of CSVs", type="zip")
@@ -105,7 +90,6 @@ if uploaded_zip:
     seg_thresh = st.sidebar.number_input("Segmentation Threshold", value=3.0)
     signal_col = st.sidebar.selectbox("Signal Column for Analysis", columns)
     analysis_percent = st.sidebar.slider("% of Signal Length to Consider for NOK Decision", 10, 100, 50, 10)
-    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.3, 0.9, 0.5, 0.05)
 
     if st.sidebar.button("Segment Beads"):
         with open("uploaded.zip", "wb") as f:
@@ -131,18 +115,12 @@ if uploaded_zip:
         st.session_state["analysis_ready"] = True
         st.session_state["split_length"] = split_length
         st.session_state["analysis_percent"] = analysis_percent
-        st.session_state["spike_discriminator_ratio"] = spike_discriminator_ratio
         st.success(f"✅ Bead segmentation completed. Split length for Al/Cu: {split_length}")
 
 if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", False):
     raw_beads = st.session_state["raw_beads"]
     split_length = st.session_state["split_length"]
     analysis_percent = st.session_state["analysis_percent"]
-    spike_discriminator_ratio = st.session_state["spike_discriminator_ratio"]
-
-    st.sidebar.header("Filtering")
-    alu_ignore_thresh = st.sidebar.number_input("Aluminum Ignore Threshold (Filter Above)", value=5000.0)
-    cu_ignore_thresh = st.sidebar.number_input("Copper Ignore Threshold (Filter Above)", value=8000.0)
 
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
@@ -152,10 +130,10 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
 
     win_size = st.sidebar.number_input("Window Size (Analysis)", 10, 1000, 350, 10)
     step_size = st.sidebar.number_input("Step Size", 1, 500, 175)
-    metric = st.sidebar.selectbox("Metric", ["Mean", "Median", "Standard Deviation"])
-    mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"])
-    thresh_input = st.sidebar.text_input("Change Magnitude Threshold", "15")
-    threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
+    threshold = st.sidebar.number_input("Change Magnitude Threshold (%)", 1.0, 100.0, 15.0, 0.5)
+
+    slope_discriminator = st.sidebar.slider("Slope Discriminator Threshold", 0.0, 1.0, 0.1, 0.01)
+    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.05, 0.9, 0.5, 0.05)
 
     bead_options = sorted(raw_beads.keys())
     selected_bead = st.selectbox("Select Bead Number to Display", bead_options)
@@ -172,30 +150,28 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
             sig = raw_sig.copy()
 
-            if bead_type == "Aluminum":
-                sig = np.minimum(sig, alu_ignore_thresh)
-            elif bead_type == "Copper":
-                sig = np.minimum(sig, cu_ignore_thresh)
-
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
-            result = analyze_change_points(sig, win_size, step_size, metric, threshold, mode)
+            result = analyze_change_points(sig, win_size, step_size, threshold)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
 
             cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
-            signal_mean = sig.mean()
+            signal_median = sig.median()
+
             flag = "OK"
 
-            if len(cp_in_region) == 1 or len(cp_in_region) > 1:
-                high_points = 0
-                total_points = 0
-                for cp in cp_in_region:
-                    cp_start, cp_end, _ = cp
-                    cp_values = sig.iloc[cp_start:cp_end+1]
-                    high_points += (cp_values > signal_mean).sum()
-                    total_points += len(cp_values)
-                if total_points > 0 and (high_points / total_points) > spike_discriminator_ratio:
+            if cp_in_region:
+                false_alarm = False
+                for cp_start, cp_end, _ in cp_in_region:
+                    window = sig.iloc[cp_start:cp_end+1]
+                    high_ratio = (window > signal_median).sum() / len(window)
+                    slope = (window.median() - sig.iloc[max(cp_start-1,0)]) / max((cp_end - cp_start + 1),1)
+
+                    if high_ratio > spike_discriminator_ratio or slope < slope_discriminator:
+                        false_alarm = True
+
+                if false_alarm:
                     flag = "NOK_False"
                 elif len(cp_in_region) == 1:
                     flag = "NOK"
@@ -219,9 +195,9 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
                 color = 'red' if result["change_points"] else 'black'
                 raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
 
-                y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
+                y_scores = result["rel_scores"]
                 score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
-                score_fig.add_trace(go.Scatter(x=result["positions"], y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]),
+                score_fig.add_trace(go.Scatter(x=result["positions"], y=[threshold]*len(result["positions"]),
                                                mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
 
     st.plotly_chart(raw_fig, use_container_width=True)
