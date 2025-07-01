@@ -81,13 +81,13 @@ if uploaded_zip:
     signal_col = sample_df.columns[0]
     seg_thresh = 3.0
     analysis_percent = 100
-    alu_ignore_thresh = 3.0
-    cu_ignore_thresh = 3.0
+    # alu_ignore_thresh = 3.0
+    # cu_ignore_thresh = 3.0
     use_smooth = True
-    win_len = 99
+    win_len = 199
     polyorder = 5
-    win_size = 100
-    step_size = 50
+    win_size = 350
+    step_size = 175
     metric = "Median"
     thresh_input = "15"
     threshold = float(thresh_input) / 100
@@ -121,7 +121,9 @@ if uploaded_zip:
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
+            clip_threshold = np.percentile(raw_sig, 99)
+            sig = np.minimum(raw_sig, clip_threshold)
+            # sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
             result = analyze_change_points(sig, win_size, step_size, metric, threshold)
@@ -177,7 +179,9 @@ if uploaded_zip:
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
+            clip_threshold = np.percentile(raw_sig, 99)
+            sig = np.minimum(raw_sig, clip_threshold)
+            # sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
