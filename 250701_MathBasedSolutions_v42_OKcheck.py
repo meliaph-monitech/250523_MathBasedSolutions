@@ -84,10 +84,10 @@ if uploaded_zip:
     alu_ignore_thresh = 3.0
     cu_ignore_thresh = 3.0
     use_smooth = True
-    win_len = 199
+    win_len = 99
     polyorder = 5
-    win_size = 350
-    step_size = 175
+    win_size = 200
+    step_size = 200
     metric = "Median"
     thresh_input = "15"
     threshold = float(thresh_input) / 100
