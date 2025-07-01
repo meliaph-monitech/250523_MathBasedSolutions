@@ -147,7 +147,7 @@ if uploaded_zip:
 
             # --- Re-check with filtered signal for flagged signals ---
             if flag in ["NOK", "OK_Check"]:
-                clip_threshold = np.percentile(raw_sig, 99)
+                clip_threshold = np.percentile(raw_sig, 75)
                 filtered_sig = np.minimum(raw_sig, clip_threshold)
                 if use_smooth and len(filtered_sig) >= win_size:
                     filtered_sig = pd.Series(savgol_filter(filtered_sig, win_len, polyorder))
