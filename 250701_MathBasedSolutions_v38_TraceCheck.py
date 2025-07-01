@@ -219,7 +219,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
                                                mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
 
                 slope_fig.add_trace(go.Scatter(x=result["positions"], y=result["slopes"], mode='lines+markers', name=f"{fname} Slope"))
-                slope_fig.add_trace(go.Scatter(x=result["positions"], y=[slope_discriminator*100]*len(result["positions"]),
+                slope_fig.add_trace(go.Scatter(x=result["positions"], y=[slope_discriminator]*len(result["positions"]),
                                                mode='lines', name="Slope Threshold", line=dict(color="green", dash="dash")))
 
                 spike_fig.add_trace(go.Scatter(x=result["positions"], y=result["spike_ratios"], mode='lines+markers', name=f"{fname} Spike Ratio"))
