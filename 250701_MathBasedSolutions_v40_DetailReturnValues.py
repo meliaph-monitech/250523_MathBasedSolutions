@@ -225,7 +225,7 @@ if uploaded_zip:
         x=not_triggered["Start Index"],
         y=not_triggered["Rel Diff (%)"] if mode == "Relative (%)" else not_triggered["Abs Diff"],
         mode='markers',
-        marker=dict(color='black'),
+        marker=dict(color='blue'),
         name='Not Triggered',
         hovertext=[
             f"File: {a}<br>Bead: {b}<br>Type: {c}<br>Win1: {d:.3f}<br>Win2: {e:.3f}<br>Threshold: {f:.2f}<br>Flag: {g}"
