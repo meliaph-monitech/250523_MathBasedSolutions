@@ -148,10 +148,14 @@ if uploaded_zip:
             # --- Re-check with filtered signal for flagged signals ---
             if flag in ["NOK", "OK_Check"]:
                 clip_threshold = np.percentile(raw_sig, 75)
-                filtered_sig = np.minimum(raw_sig, clip_threshold)
-                if use_smooth and len(filtered_sig) >= win_size:
-                    filtered_sig = pd.Series(savgol_filter(filtered_sig, win_len, polyorder))
-            
+                # filtered_sig = np.minimum(raw_sig, clip_threshold)
+                # if use_smooth and len(filtered_sig) >= win_size:
+                #     filtered_sig = pd.Series(savgol_filter(filtered_sig, win_len, polyorder))
+                filtered_array = np.minimum(raw_sig, clip_threshold)
+                if use_smooth and len(filtered_array) >= win_len:
+                    filtered_array = savgol_filter(filtered_array, win_len, polyorder)
+                filtered_sig = pd.Series(filtered_array, index=np.arange(len(filtered_array)))   
+
                 filtered_result = analyze_change_points(filtered_sig, win_size, step_size, metric, threshold)
                 cp_in_region_filtered = [cp for cp in filtered_result["change_points"] if cp[1] < nok_region_limit]
                 # Check if change points persist after filtering
