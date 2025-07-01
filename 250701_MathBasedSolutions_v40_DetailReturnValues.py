@@ -178,13 +178,13 @@ if uploaded_zip:
 
             y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
             score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
-            score_fig.add_trace(go.Scatter(
-                x=result["positions"],
-                y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]),
-                mode='lines',
-                name="Threshold",
-                line=dict(color="orange", dash="dash")
-            ))
+            # score_fig.add_trace(go.Scatter(
+            #     x=result["positions"],
+            #     y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]),
+            #     mode='lines',
+            #     name="Threshold",
+            #     line=dict(color="orange", dash="dash")
+            # ))
 
             signal_clean = sig.dropna().reset_index(drop=True)
             records = []
@@ -221,7 +221,15 @@ if uploaded_zip:
     detailed_windows_df = pd.concat(detailed_inspection, ignore_index=True)
     st.subheader("Raw and Smoothed Signal with Change Points")
     st.plotly_chart(raw_fig, use_container_width=True)
+    
     st.subheader("Score Trace with Threshold")
+    score_fig.add_hline(
+        y=threshold*100 if mode == "Relative (%)" else threshold,
+        line_dash="dash",
+        line_color="orange",
+        annotation_text="Threshold",
+        annotation_position="top left"
+    )
     st.plotly_chart(score_fig, use_container_width=True)
 
 
