@@ -225,46 +225,46 @@ if uploaded_zip:
     st.plotly_chart(score_fig, use_container_width=True)
 
 
-    df_vis = detailed_windows_df.copy()
-    df_vis['Color'] = np.where(df_vis['Triggered Change Point'], 'Triggered', 'Not Triggered')
+    # df_vis = detailed_windows_df.copy()
+    # df_vis['Color'] = np.where(df_vis['Triggered Change Point'], 'Triggered', 'Not Triggered')
 
-    scatter_fig = go.Figure()
+    # scatter_fig = go.Figure()
 
-    # Triggered
-    triggered = df_vis[df_vis['Triggered Change Point'] == True]
-    scatter_fig.add_trace(go.Scatter(
-        x=triggered["Start Index"],
-        y=triggered["Rel Diff (%)"] if mode == "Relative (%)" else triggered["Abs Diff"],
-        mode='markers',
-        marker=dict(color='red'),
-        name='Triggered'
-    ))
+    # # Triggered
+    # triggered = df_vis[df_vis['Triggered Change Point'] == True]
+    # scatter_fig.add_trace(go.Scatter(
+    #     x=triggered["Start Index"],
+    #     y=triggered["Rel Diff (%)"] if mode == "Relative (%)" else triggered["Abs Diff"],
+    #     mode='markers',
+    #     marker=dict(color='red'),
+    #     name='Triggered'
+    # ))
 
-    # Not Triggered
-    not_triggered = df_vis[df_vis['Triggered Change Point'] == False]
-    scatter_fig.add_trace(go.Scatter(
-        x=not_triggered["Start Index"],
-        y=not_triggered["Rel Diff (%)"] if mode == "Relative (%)" else not_triggered["Abs Diff"],
-        mode='markers',
-        marker=dict(color='black'),
-        name='Not Triggered'
-    ))
+    # # Not Triggered
+    # not_triggered = df_vis[df_vis['Triggered Change Point'] == False]
+    # scatter_fig.add_trace(go.Scatter(
+    #     x=not_triggered["Start Index"],
+    #     y=not_triggered["Rel Diff (%)"] if mode == "Relative (%)" else not_triggered["Abs Diff"],
+    #     mode='markers',
+    #     marker=dict(color='black'),
+    #     name='Not Triggered'
+    # ))
     
-    scatter_fig.add_hline(
-        y=threshold*100 if mode=="Relative (%)" else threshold,
-        line_dash="dash",
-        line_color="orange",
-        annotation_text="Threshold",
-        annotation_position="top left"
-    )
+    # scatter_fig.add_hline(
+    #     y=threshold*100 if mode=="Relative (%)" else threshold,
+    #     line_dash="dash",
+    #     line_color="orange",
+    #     annotation_text="Threshold",
+    #     annotation_position="top left"
+    # )
 
-    scatter_fig.update_layout(
-        title=f"Window-based Change Detection for Bead {selected_bead}",
-        xaxis_title="Start Index",
-        yaxis_title="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff"
-    )
+    # scatter_fig.update_layout(
+    #     title=f"Window-based Change Detection for Bead {selected_bead}",
+    #     xaxis_title="Start Index",
+    #     yaxis_title="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff"
+    # )
 
-    st.plotly_chart(scatter_fig, use_container_width=True)
+    # st.plotly_chart(scatter_fig, use_container_width=True)
 
     st.subheader("Detailed Per-Window Change Point Analysis")
     st.dataframe(detailed_windows_df)
