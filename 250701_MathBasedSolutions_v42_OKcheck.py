@@ -121,7 +121,7 @@ if uploaded_zip:
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            clip_threshold = np.percentile(raw_sig, 99)
+            clip_threshold = np.percentile(raw_sig, 75)
             sig = np.minimum(raw_sig, clip_threshold)
             # sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
             if use_smooth and len(sig) >= win_size:
@@ -179,7 +179,7 @@ if uploaded_zip:
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            clip_threshold = np.percentile(raw_sig, 99)
+            clip_threshold = np.percentile(raw_sig, 75)
             sig = np.minimum(raw_sig, clip_threshold)
             # sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
             if use_smooth and len(sig) >= win_size:
