@@ -149,7 +149,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
         step=0.0001, 
         format="%.4f"
         )
-    spike_discriminator_ratio = st.sidebar.slider("Spike Discriminator Ratio (for NOK_False)", 0.05, 0.99, 0.5, 0.05)
+    spike_discriminator_ratio = st.sidebar.number_input("Spike Discriminator Ratio (for NOK_False)", 0.05, 0.99, 0.5, 0.05)
 
     bead_options = sorted(raw_beads.keys())
     selected_bead = st.selectbox("Select Bead Number to Display", bead_options)
