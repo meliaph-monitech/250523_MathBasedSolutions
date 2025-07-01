@@ -137,7 +137,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     st.sidebar.header("Smoothing & Detection")
     use_smooth = st.sidebar.checkbox("Apply Smoothing", value=False)
     if use_smooth:
-        win_len = st.sidebar.number_input("Smoothing Window Length (odd)", 3, 199, 349, step=2)
+        win_len = st.sidebar.number_input("Smoothing Window Length (odd)", 3, 199, 299, step=2)
         polyorder = st.sidebar.number_input("Polynomial Order", 1, 5, 5)
 
     win_size = st.sidebar.number_input("Window Size (Analysis)", 10, 1000, 350, 10)
