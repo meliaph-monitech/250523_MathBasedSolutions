@@ -49,13 +49,13 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
             v1, v2 = curr.median(), next_.median()
         elif metric == "Standard Deviation":
             v1, v2 = curr.std(), next_.std()
-        abs_diff = abs(v1 - v2)
-        rel_diff = abs_diff / max(abs(v1), 1e-6)
-        abs_scores.append(abs_diff)
+        diff = v2 - v1  # preserve sign
+        rel_diff = diff / max(abs(v1), 1e-6)  # preserve sign
+        abs_scores.append(diff)
         rel_scores.append(rel_diff)
         positions.append(start + window_size)
-        check_diff = abs_diff if mode == "Absolute" else rel_diff
-        if check_diff > threshold:
+        check_diff = diff if mode == "Absolute" else rel_diff
+        if abs(check_diff) > threshold:  # still detect based on magnitude
             change_points.append((start, start + 2 * window_size - 1, check_diff))
     return {
         "positions": positions,
@@ -178,13 +178,6 @@ if uploaded_zip:
 
             y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
             score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
-            # score_fig.add_trace(go.Scatter(
-            #     x=result["positions"],
-            #     y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]),
-            #     mode='lines',
-            #     name="Threshold",
-            #     line=dict(color="orange", dash="dash")
-            # ))
 
             signal_clean = sig.dropna().reset_index(drop=True)
             records = []
@@ -197,10 +190,10 @@ if uploaded_zip:
                     v1, v2 = curr.median(), next_.median()
                 elif metric == "Standard Deviation":
                     v1, v2 = curr.std(), next_.std()
-                abs_diff = abs(v1 - v2)
-                rel_diff = abs_diff / max(abs(v1), 1e-6)
-                check_diff = abs_diff if mode == "Absolute" else rel_diff
-                triggered = check_diff > threshold
+                diff = v2 - v1  # preserve sign
+                rel_diff = diff / max(abs(v1), 1e-6)
+                check_diff = diff if mode == "Absolute" else rel_diff
+                triggered = abs(check_diff) > threshold
                 records.append({
                     "File": fname,
                     "Bead": bead_num,
@@ -209,7 +202,7 @@ if uploaded_zip:
                     "End Index": start + 2 * win_size - 1,
                     "Metric Window 1": v1,
                     "Metric Window 2": v2,
-                    "Abs Diff": abs_diff,
+                    "Diff": diff,
                     "Rel Diff (%)": rel_diff * 100,
                     "Threshold": threshold * 100 if mode == "Relative (%)" else threshold,
                     "Triggered Change Point": triggered,
@@ -231,48 +224,6 @@ if uploaded_zip:
         annotation_position="top left"
     )
     st.plotly_chart(score_fig, use_container_width=True)
-
-
-    # df_vis = detailed_windows_df.copy()
-    # df_vis['Color'] = np.where(df_vis['Triggered Change Point'], 'Triggered', 'Not Triggered')
-
-    # scatter_fig = go.Figure()
-
-    # # Triggered
-    # triggered = df_vis[df_vis['Triggered Change Point'] == True]
-    # scatter_fig.add_trace(go.Scatter(
-    #     x=triggered["Start Index"],
-    #     y=triggered["Rel Diff (%)"] if mode == "Relative (%)" else triggered["Abs Diff"],
-    #     mode='markers',
-    #     marker=dict(color='red'),
-    #     name='Triggered'
-    # ))
-
-    # # Not Triggered
-    # not_triggered = df_vis[df_vis['Triggered Change Point'] == False]
-    # scatter_fig.add_trace(go.Scatter(
-    #     x=not_triggered["Start Index"],
-    #     y=not_triggered["Rel Diff (%)"] if mode == "Relative (%)" else not_triggered["Abs Diff"],
-    #     mode='markers',
-    #     marker=dict(color='black'),
-    #     name='Not Triggered'
-    # ))
-    
-    # scatter_fig.add_hline(
-    #     y=threshold*100 if mode=="Relative (%)" else threshold,
-    #     line_dash="dash",
-    #     line_color="orange",
-    #     annotation_text="Threshold",
-    #     annotation_position="top left"
-    # )
-
-    # scatter_fig.update_layout(
-    #     title=f"Window-based Change Detection for Bead {selected_bead}",
-    #     xaxis_title="Start Index",
-    #     yaxis_title="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff"
-    # )
-
-    # st.plotly_chart(scatter_fig, use_container_width=True)
 
     st.subheader("Detailed Per-Window Change Point Analysis")
     st.dataframe(detailed_windows_df)
