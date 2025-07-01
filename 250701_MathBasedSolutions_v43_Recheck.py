@@ -121,9 +121,10 @@ if uploaded_zip:
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            clip_threshold = np.percentile(raw_sig, 75)
-            sig = np.minimum(raw_sig, clip_threshold)
+            # clip_threshold = np.percentile(raw_sig, 75)
+            # sig = np.minimum(raw_sig, clip_threshold)
             # sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
+            sig = raw_sig.copy()
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
             result = analyze_change_points(sig, win_size, step_size, metric, threshold)
@@ -144,6 +145,28 @@ if uploaded_zip:
             elif flag == "OK_Check":
                 global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
 
+            # --- Re-check with filtered signal for flagged signals ---
+            if flag in ["NOK", "OK_Check"]:
+                clip_threshold = np.percentile(raw_sig, 99)
+                filtered_sig = np.minimum(raw_sig, clip_threshold)
+                if use_smooth and len(filtered_sig) >= win_size:
+                    filtered_sig = pd.Series(savgol_filter(filtered_sig, win_len, polyorder))
+            
+                filtered_result = analyze_change_points(filtered_sig, win_size, step_size, metric, threshold)
+                cp_in_region_filtered = [cp for cp in filtered_result["change_points"] if cp[1] < nok_region_limit]
+                # Check if change points persist after filtering
+                downgrade = True
+                for cp in cp_in_region_filtered:
+                    if cp[2] > threshold and flag == "NOK":
+                        downgrade = False
+                        break
+                    elif cp[2] < -threshold and flag == "OK_Check":
+                        downgrade = False
+                        break
+                if downgrade:
+                    flag = "OK"
+
+    
     # st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
     # if global_summary:
     #     global_table = pd.DataFrame([
@@ -179,9 +202,10 @@ if uploaded_zip:
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            clip_threshold = np.percentile(raw_sig, 75)
-            sig = np.minimum(raw_sig, clip_threshold)
+            # clip_threshold = np.percentile(raw_sig, 75)
+            # sig = np.minimum(raw_sig, clip_threshold)
             # sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
+            sig = raw_sig.copy()
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
