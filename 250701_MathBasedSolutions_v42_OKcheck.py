@@ -37,11 +37,10 @@ def segment_beads(df, column, threshold):
     return list(zip(start_indices, end_indices))
 
 # Utility: Change Point Detection
-def analyze_change_points(signal, window_size, step_size, metric, threshold, mode):
+def analyze_change_points(signal, window_size, step_size, metric, threshold):
     signal = signal.dropna().reset_index(drop=True)
     change_points = []
-    abs_scores, rel_scores = [], []
-    positions = []
+    diff_scores, rel_scores, positions = [], [], []
     for start in range(0, len(signal) - 2 * window_size + 1, step_size):
         curr = signal[start:start + window_size]
         next_ = signal[start + window_size:start + 2 * window_size]
@@ -51,17 +50,16 @@ def analyze_change_points(signal, window_size, step_size, metric, threshold, mod
             v1, v2 = curr.median(), next_.median()
         elif metric == "Standard Deviation":
             v1, v2 = curr.std(), next_.std()
-        diff = v2 - v1  # preserve sign
-        rel_diff = diff / max(abs(v1), 1e-6)  # preserve sign
-        abs_scores.append(diff)
+        diff = v2 - v1
+        rel_diff = diff / max(abs(v1), 1e-6)
+        diff_scores.append(diff)
         rel_scores.append(rel_diff)
         positions.append(start + window_size)
-        check_diff = diff if mode == "Absolute" else rel_diff
-        if abs(check_diff) > threshold:  # still detect based on magnitude
-            change_points.append((start, start + 2 * window_size - 1, check_diff))
+        if abs(rel_diff) > threshold:
+            change_points.append((start, start + 2 * window_size - 1, rel_diff))
     return {
         "positions": positions,
-        "abs_scores": abs_scores,
+        "diff_scores": diff_scores,
         "rel_scores": rel_scores,
         "change_points": change_points
     }
@@ -78,7 +76,7 @@ if uploaded_zip:
         with zip_ref.open(first_csv) as f:
             sample_df = pd.read_csv(f)
 
-    # Hard-coded parameters as requested
+    # Hard-coded stable parameters
     seg_col = sample_df.columns[2]
     signal_col = sample_df.columns[0]
     seg_thresh = 3.0
@@ -91,9 +89,8 @@ if uploaded_zip:
     win_size = 350
     step_size = 175
     metric = "Median"
-    mode = "Relative (%)"
     thresh_input = "15"
-    threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
+    threshold = float(thresh_input) / 100
 
     with open("uploaded.zip", "wb") as f:
         f.write(uploaded_zip.getbuffer())
@@ -117,36 +114,38 @@ if uploaded_zip:
 
     bead_options = sorted(raw_beads.keys())
 
-    # --- GLOBAL NOK/NOK_CHECK SUMMARY ACROSS ALL BEADS ---
+    # Global NOK and OK_Check summary
     global_summary = defaultdict(list)
 
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            sig = raw_sig.copy()
-            if bead_type == "Aluminum":
-                sig = np.minimum(sig, alu_ignore_thresh)
-            else:
-                sig = np.minimum(sig, cu_ignore_thresh)
+            sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
-
-            result = analyze_change_points(sig, win_size, step_size, metric, threshold, mode)
+            result = analyze_change_points(sig, win_size, step_size, metric, threshold)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
             cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
-            flag = "OK" if len(cp_in_region) == 0 else ("NOK" if len(cp_in_region) == 1 else "NOK_Check")
-            if flag in ["NOK", "NOK_Check"]:
+            flag = "OK"
+            for cp in cp_in_region:
+                if cp[2] > threshold:
+                    flag = "NOK"
+                    break
+                elif cp[2] < -threshold:
+                    flag = "OK_Check"
+                    break
+            if flag in ["NOK", "OK_Check"]:
                 global_summary[fname].append(f"{bead_num} ({bead_type})")
 
-    st.subheader("Global NOK and NOK_Check Beads Summary Across All Beads")
+    st.subheader("Global NOK and OK_Check Beads Summary Across All Beads")
     if global_summary:
         global_table = pd.DataFrame([
-            {"File": file, "NOK/NOK_Check Beads": ", ".join(beads)}
+            {"File": file, "NOK/OK_Check Beads": ", ".join(beads)}
             for file, beads in global_summary.items()
         ])
         st.dataframe(global_table)
     else:
-        st.write("✅ No NOK or NOK_Check beads detected across all files and all beads.")
+        st.write("✅ No NOK or OK_Check beads detected across all files and all beads.")
 
     with st.sidebar:
         selected_bead = st.selectbox("Select Bead Number for Detailed Inspection", bead_options)
@@ -158,28 +157,32 @@ if uploaded_zip:
     for bead_num in [selected_bead]:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
-            sig = raw_sig.copy()
-            if bead_type == "Aluminum":
-                sig = np.minimum(sig, alu_ignore_thresh)
-            else:
-                sig = np.minimum(sig, cu_ignore_thresh)
+            sig = np.minimum(raw_sig, alu_ignore_thresh if bead_type == "Aluminum" else cu_ignore_thresh)
             if use_smooth and len(sig) >= win_size:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
 
-            result = analyze_change_points(sig, win_size, step_size, metric, threshold, mode)
+            result = analyze_change_points(sig, win_size, step_size, metric, threshold)
             nok_region_limit = int(len(raw_sig) * analysis_percent / 100)
             cp_in_region = [cp for cp in result["change_points"] if cp[1] < nok_region_limit]
-            flag = "OK" if len(cp_in_region) == 0 else ("NOK" if len(cp_in_region) == 1 else "NOK_Check")
+            flag = "OK"
+            for cp in cp_in_region:
+                if cp[2] > threshold:
+                    flag = "NOK"
+                    break
+                elif cp[2] < -threshold:
+                    flag = "OK_Check"
+                    break
+
+            color = 'red' if flag == "NOK" else 'blue' if flag == "OK_Check" else 'black'
 
             for start, end, _ in result["change_points"]:
                 raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.2, layer="below", line_width=0)
 
             raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)"))
-            color = 'red' if flag != "OK" else 'black'
             raw_fig.add_trace(go.Scatter(y=sig, mode='lines', name=f"{fname} (filtered)", line=dict(color=color)))
 
-            y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
-            score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
+            y_scores = [v * 100 for v in result["rel_scores"]]
+            score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Rel Diff (%)"))
 
             signal_clean = sig.dropna().reset_index(drop=True)
             records = []
@@ -192,10 +195,9 @@ if uploaded_zip:
                     v1, v2 = curr.median(), next_.median()
                 elif metric == "Standard Deviation":
                     v1, v2 = curr.std(), next_.std()
-                diff = v2 - v1  # preserve sign
+                diff = v2 - v1
                 rel_diff = diff / max(abs(v1), 1e-6)
-                check_diff = diff if mode == "Absolute" else rel_diff
-                triggered = abs(check_diff) > threshold
+                triggered = abs(rel_diff) > threshold
                 records.append({
                     "File": fname,
                     "Bead": bead_num,
@@ -206,7 +208,7 @@ if uploaded_zip:
                     "Metric Window 2": v2,
                     "Diff": diff,
                     "Rel Diff (%)": rel_diff * 100,
-                    "Threshold": threshold * 100 if mode == "Relative (%)" else threshold,
+                    "Threshold": threshold * 100,
                     "Triggered Change Point": triggered,
                     "Flag": flag
                 })
@@ -214,12 +216,13 @@ if uploaded_zip:
             detailed_inspection.append(bead_df)
 
     detailed_windows_df = pd.concat(detailed_inspection, ignore_index=True)
+
     st.subheader("Raw and Smoothed Signal with Change Points")
     st.plotly_chart(raw_fig, use_container_width=True)
-    
+
     st.subheader("Score Trace with Threshold")
     score_fig.add_hline(
-        y=threshold*100 if mode == "Relative (%)" else threshold,
+        y=threshold * 100,
         line_dash="dash",
         line_color="orange",
         annotation_text="Threshold",
