@@ -46,7 +46,7 @@ def segment_beads(df, column, threshold):
 def analyze_change_points(signal, window_size, step_size, threshold):
     signal = signal.dropna().reset_index(drop=True)
     change_points = []
-    rel_scores, positions = [], []
+    rel_scores, positions, slopes, spike_ratios = [], [], [], []
 
     for start in range(0, len(signal) - 2 * window_size + 1, step_size):
         curr = signal[start:start + window_size]
@@ -59,22 +59,30 @@ def analyze_change_points(signal, window_size, step_size, threshold):
             rel_diff = diff / max(abs(v1), 1e-6)
             rel_scores.append(rel_diff * 100)
             positions.append(start + window_size)
+            slopes.append(diff / window_size)
+
+            spike_ratio = (next_ > signal.median()).sum() / len(next_)
+            spike_ratios.append(spike_ratio * 100)
 
             if rel_diff > (threshold / 100):
                 change_points.append((start, start + 2 * window_size - 1, rel_diff * 100))
         else:
             rel_scores.append(0)
             positions.append(start + window_size)
+            slopes.append(0)
+            spike_ratios.append(0)
 
     return {
         "positions": positions,
         "rel_scores": rel_scores,
+        "slopes": slopes,
+        "spike_ratios": spike_ratios,
         "change_points": change_points
     }
 
 # --- Streamlit App ---
 st.set_page_config(layout="wide")
-st.title("Refined Change Point Detector (Valley and Slope Filtering)")
+st.title("Refined Change Point Detector (Valley, Slope, Spike Visualization)")
 
 st.sidebar.header("Upload and Segmentation")
 uploaded_zip = st.sidebar.file_uploader("Upload ZIP of CSVs", type="zip")
@@ -141,6 +149,8 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
     st.subheader(f"Raw and Smoothed Signal for Bead {selected_bead}")
     raw_fig = go.Figure()
     score_fig = go.Figure()
+    slope_fig = go.Figure()
+    spike_fig = go.Figure()
 
     table_data = []
     global_summary = defaultdict(list)
@@ -200,9 +210,23 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
                 score_fig.add_trace(go.Scatter(x=result["positions"], y=[threshold]*len(result["positions"]),
                                                mode='lines', name="Threshold", line=dict(color="orange", dash="dash")))
 
+                slope_fig.add_trace(go.Scatter(x=result["positions"], y=result["slopes"], mode='lines+markers', name=f"{fname} Slope"))
+                slope_fig.add_trace(go.Scatter(x=result["positions"], y=[slope_discriminator*100]*len(result["positions"]),
+                                               mode='lines', name="Slope Threshold", line=dict(color="green", dash="dash")))
+
+                spike_fig.add_trace(go.Scatter(x=result["positions"], y=result["spike_ratios"], mode='lines+markers', name=f"{fname} Spike Ratio"))
+                spike_fig.add_trace(go.Scatter(x=result["positions"], y=[spike_discriminator_ratio*100]*len(result["positions"]),
+                                               mode='lines', name="Spike Ratio Threshold", line=dict(color="purple", dash="dash")))
+
     st.plotly_chart(raw_fig, use_container_width=True)
     st.subheader("Score Trace (Change Magnitude per Window)")
     st.plotly_chart(score_fig, use_container_width=True)
+
+    st.subheader("Slope Trace (for Tuning Slope Discriminator)")
+    st.plotly_chart(slope_fig, use_container_width=True)
+
+    st.subheader("Spike Ratio Trace (for Tuning Spike Discriminator)")
+    st.plotly_chart(spike_fig, use_container_width=True)
 
     st.subheader("Change Point Summary Table")
     st.dataframe(pd.DataFrame(table_data))
