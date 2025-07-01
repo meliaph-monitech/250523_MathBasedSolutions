@@ -123,11 +123,11 @@ if uploaded_zip:
             # Dynamic Window Settings
             raw_length = len(raw_sig)
             # Dynamically adjust parameters
-            win_len = min(raw_length // 10 * 2 + 1, 199)
+            win_len = min(raw_length // 20 * 2 + 1, 199)
             win_len = max(win_len, 5) # Ensures the minimum window length is at least 5
     
-            win_size = max(raw_length // 5, 50)
-            step_size = max(win_size // 2, 10)
+            win_size = max(raw_length // 20, 50)
+            step_size = max(win_size // 10, 10)
             
             sig = raw_sig.copy()
             if use_smooth and len(sig) >= win_len:
