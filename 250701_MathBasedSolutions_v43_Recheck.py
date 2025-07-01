@@ -82,10 +82,13 @@ if uploaded_zip:
     seg_thresh = 3.0
     analysis_percent = 100
     use_smooth = True
-    win_len = 199
     polyorder = 5
-    win_size = 350
-    step_size = 50
+
+    # Recommended hard-coded values
+    # win_len = 199
+    # win_size = 350
+    # step_size = 175
+    
     metric = "Median"
     thresh_input = "15"
     threshold = float(thresh_input) / 100
@@ -117,6 +120,15 @@ if uploaded_zip:
         for fname, raw_sig in raw_beads[bead_num]:
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
 
+            # Dynamic Window Settings
+            raw_length = len(raw_sig)
+            # Dynamically adjust parameters
+            win_len = min(raw_length // 20 * 2 + 1, 199)
+            win_len = max(win_len, 5) # Ensures the minimum window length is at least 5
+    
+            win_size = max(raw_length // 10, 50)
+            step_size = max(win_size // 2, 10)
+            
             sig = raw_sig.copy()
             if use_smooth and len(sig) >= win_len:
                 sig = pd.Series(savgol_filter(sig, win_len, polyorder))
