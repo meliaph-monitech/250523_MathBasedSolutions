@@ -101,12 +101,11 @@ if uploaded_zip:
     use_smooth = True
     metric = "Median"
     mode = "Relative (%)"
-
+    seg_col = sample_df.columns[2]
+    seg_thresh = 3.0
+    
     with st.sidebar: 
-        seg_col = st.selectbox("Column for Bead Segmentation (seg_col)", sample_df.columns, index=2)
         signal_col = st.selectbox("Column for Signal Analysis (signal_col)", sample_df.columns, index=0)
-
-        seg_thresh = st.number_input("Segmentation Threshold (seg_thresh)", value=3.0, step=0.1)
         analysis_percent = st.number_input("Analysis Percent (analysis_percent)", min_value=1, max_value=100, value=100, step=1)
         alu_ignore_thresh = st.number_input("Aluminum Ignore Threshold (alu_ignore_thresh)", value=3.0, step=0.1)
         cu_ignore_thresh = st.number_input("Copper Ignore Threshold (cu_ignore_thresh)", value=3.0, step=0.1)
