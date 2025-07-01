@@ -142,8 +142,8 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
 
     win_size = st.sidebar.number_input("Window Size (Analysis)", 10, 1000, 350, 10)
     step_size = st.sidebar.number_input("Step Size", 1, 500, 175)
-    metric = st.sidebar.selectbox("Metric", ["Mean", "Median", "Standard Deviation"])
-    mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"])
+    metric = st.sidebar.selectbox("Metric", ["Mean", "Median", "Standard Deviation"], "Median")
+    mode = st.sidebar.selectbox("Threshold Mode", ["Absolute", "Relative (%)"], "Relative (%)")
     thresh_input = st.sidebar.text_input("Change Magnitude Threshold", "15")
     threshold = float(thresh_input) / 100 if mode == "Relative (%)" else float(thresh_input)
 
