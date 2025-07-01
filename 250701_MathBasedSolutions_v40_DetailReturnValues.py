@@ -197,19 +197,77 @@ if uploaded_zip:
 
     df_vis = detailed_windows_df.copy()
     df_vis['Color'] = np.where(df_vis['Triggered Change Point'], 'Triggered', 'Not Triggered')
-    fig = px.scatter(
-        df_vis,
-        x="Start Index",
-        y="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff",
-        color="Color",
-        hover_data=["File", "Bead", "Bead Type", "Metric Window 1", "Metric Window 2", "Threshold", "Flag"],
-        title=f"Window-based Change Detection for Bead {selected_bead}"
-    )
-    fig.add_hline(
+
+    scatter_fig = go.Figure()
+    
+    # Subset for triggered
+    triggered = df_vis[df_vis['Triggered Change Point'] == True]
+    scatter_fig.add_trace(go.Scatter(
+        x=triggered["Start Index"],
+        y=triggered["Rel Diff (%)"] if mode == "Relative (%)" else triggered["Abs Diff"],
+        mode='markers',
+        marker=dict(color='red'),
+        name='Triggered',
+        hovertext=[
+            f"File: {a}<br>Bead: {b}<br>Type: {c}<br>Win1: {d:.3f}<br>Win2: {e:.3f}<br>Threshold: {f:.2f}<br>Flag: {g}"
+            for a,b,c,d,e,f,g in zip(
+                triggered["File"], triggered["Bead"], triggered["Bead Type"],
+                triggered["Metric Window 1"], triggered["Metric Window 2"],
+                triggered["Threshold"], triggered["Flag"]
+            )
+        ],
+        hoverinfo="text"
+    ))
+    
+    # Subset for not triggered
+    not_triggered = df_vis[df_vis['Triggered Change Point'] == False]
+    scatter_fig.add_trace(go.Scatter(
+        x=not_triggered["Start Index"],
+        y=not_triggered["Rel Diff (%)"] if mode == "Relative (%)" else not_triggered["Abs Diff"],
+        mode='markers',
+        marker=dict(color='black'),
+        name='Not Triggered',
+        hovertext=[
+            f"File: {a}<br>Bead: {b}<br>Type: {c}<br>Win1: {d:.3f}<br>Win2: {e:.3f}<br>Threshold: {f:.2f}<br>Flag: {g}"
+            for a,b,c,d,e,f,g in zip(
+                not_triggered["File"], not_triggered["Bead"], not_triggered["Bead Type"],
+                not_triggered["Metric Window 1"], not_triggered["Metric Window 2"],
+                not_triggered["Threshold"], not_triggered["Flag"]
+            )
+        ],
+        hoverinfo="text"
+    ))
+    
+    # Add threshold reference line
+    scatter_fig.add_hline(
         y=threshold*100 if mode=="Relative (%)" else threshold,
         line_dash="dash",
         line_color="orange",
         annotation_text="Threshold",
         annotation_position="top left"
     )
-    st.plotly_chart(fig, use_container_width=True)
+    
+    scatter_fig.update_layout(
+        title=f"Window-based Change Detection for Bead {selected_bead}",
+        xaxis_title="Start Index",
+        yaxis_title="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff"
+    )
+    
+    st.plotly_chart(scatter_fig, use_container_width=True)
+
+    # fig = px.scatter(
+    #     df_vis,
+    #     x="Start Index",
+    #     y="Rel Diff (%)" if mode == "Relative (%)" else "Abs Diff",
+    #     color="Color",
+    #     hover_data=["File", "Bead", "Bead Type", "Metric Window 1", "Metric Window 2", "Threshold", "Flag"],
+    #     title=f"Window-based Change Detection for Bead {selected_bead}"
+    # )
+    # fig.add_hline(
+    #     y=threshold*100 if mode=="Relative (%)" else threshold,
+    #     line_dash="dash",
+    #     line_color="orange",
+    #     annotation_text="Threshold",
+    #     annotation_position="top left"
+    # )
+    # st.plotly_chart(fig, use_container_width=True)
