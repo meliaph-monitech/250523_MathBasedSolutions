@@ -118,6 +118,7 @@ if uploaded_zip:
 
     for bead_num in bead_options:
         for fname, raw_sig in raw_beads[bead_num]:
+            cp_in_region_filtered = []
             bead_type = "Aluminum" if len(raw_sig) <= split_length else "Copper"
 
             # Dynamic Window Settings
@@ -171,6 +172,7 @@ if uploaded_zip:
             #     global_summary[fname]["NOK"].append(f"{bead_num} ({bead_type})")
             # elif flag == "OK_Check":
             #     global_summary[fname]["OK_Check"].append(f"{bead_num} ({bead_type})")
+    
             # After all re-checks:
             if cp_in_region_filtered:
                 has_nok = any(cp[2] > threshold for cp in cp_in_region_filtered)
