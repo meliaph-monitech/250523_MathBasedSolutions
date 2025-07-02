@@ -180,13 +180,6 @@ if uploaded_zip:
 
             y_scores = result["abs_scores"] if mode == "Absolute" else [v*100 for v in result["rel_scores"]]
             score_fig.add_trace(go.Scatter(x=result["positions"], y=y_scores, mode='lines+markers', name=f"{fname} Score"))
-            # score_fig.add_trace(go.Scatter(
-            #     x=result["positions"],
-            #     y=[threshold*100 if mode=="Relative (%)" else threshold]*len(result["positions"]),
-            #     mode='lines',
-            #     name="Threshold",
-            #     line=dict(color="orange", dash="dash")
-            # ))
 
             signal_clean = sig.dropna().reset_index(drop=True)
             records = []
