@@ -1,249 +1,113 @@
-import streamlit as st
 import zipfile
-import os
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
-from collections import defaultdict
 import matplotlib.pyplot as plt
 import seaborn as sns
+import io
+import streamlit as st
+from scipy.signal import hilbert
+from scipy.fft import fft
+from scipy.stats import pearsonr
 
-# --- File Extraction ---
-def extract_zip(uploaded_file, extract_dir):
-    if os.path.exists(extract_dir):
-        for file in os.listdir(extract_dir):
-            os.remove(os.path.join(extract_dir, file))
-    else:
-        os.makedirs(extract_dir)
+st.title("Welding NOK Detection - Complete Pipeline")
 
-    with zipfile.ZipFile(uploaded_file, 'r') as zip_ref:
-        zip_ref.extractall(extract_dir)
+# Sidebar inputs
+with st.sidebar:
+    uploaded_zip = st.file_uploader("Upload ZIP containing CSV files", type="zip")
+    threshold_value = st.number_input("Threshold for segmentation:", value=0.5)
 
-    return [os.path.join(extract_dir, f) for f in os.listdir(extract_dir) if f.endswith('.csv')]
+if uploaded_zip:
+    with zipfile.ZipFile(uploaded_zip, "r") as z:
+        csv_files = [f for f in z.namelist() if f.endswith(".csv")]
+        example_df = pd.read_csv(z.open(csv_files[0]))
+        selected_column = st.sidebar.selectbox("Select filter column:", example_df.columns)
 
-# --- Bead Segmentation ---
-def segment_beads(df, column, threshold):
-    start_indices = []
-    end_indices = []
-    signal = df[column].to_numpy()
-    i = 0
-    while i < len(signal):
-        if signal[i] > threshold:
-            start = i
-            while i < len(signal) and signal[i] > threshold:
+        bead_lengths = {}
+        bead_signals = {}
+        suspected_NOK = {
+            "RH_250418_000001_All_68P_RH_01,02NG.csv": [1, 2],
+            "RH_250421_160001_TypeA_68p_Gap_Bead67_68NG": [67, 68],
+            "LH_250424_123949_LH_A_64P_ALL_47NG": [47]
+        }
+
+        for file in csv_files:
+            df = pd.read_csv(z.open(file))
+            signal = df[selected_column].to_numpy()
+            segments = []
+            i = 0
+            while i < len(signal):
+                if signal[i] > threshold_value:
+                    start = i
+                    while i < len(signal) and signal[i] > threshold_value:
+                        i += 1
+                    end = i
+                    segments.append((start, end))
                 i += 1
-            end = i - 1
-            start_indices.append(start)
-            end_indices.append(end)
-        else:
-            i += 1
-    return list(zip(start_indices, end_indices))
+            bead_lengths[file] = [end - start for start, end in segments]
+            bead_signals[file] = [signal[start:end] for start, end in segments]
+c
+        max_beads = max(len(v) for v in bead_lengths.values())
+        heatmap_df = pd.DataFrame(index=csv_files, columns=[f"Bead {i+1}" for i in range(max_beads)])
+        for file, lengths in bead_lengths.items():
+            for idx, length in enumerate(lengths):
+                heatmap_df.loc[file, f"Bead {idx+1}"] = length
 
-# --- App Setup ---
-st.set_page_config(layout="wide")
-st.title("Dip Valley and Rise Peak Detector V21")
+        st.subheader("Bead Length Heatmap")
+        plt.figure(figsize=(min(20, max_beads * 0.5), max(5, len(csv_files) * 0.5)))
+        sns.heatmap(heatmap_df.fillna(0).astype(float), annot=True, fmt=".0f", cmap="viridis")
+        st.pyplot(plt)
 
-st.sidebar.header("Upload Data")
-ok_zip = st.sidebar.file_uploader("ZIP file with ONLY OK welds", type="zip")
-test_zip = st.sidebar.file_uploader("ZIP file to Test", type="zip")
+        st.success("Bead segmentation consistency check complete.")
 
-if ok_zip and test_zip:
-    with zipfile.ZipFile(ok_zip, 'r') as zip_ref:
-        sample_csv_name = [name for name in zip_ref.namelist() if name.endswith('.csv')][0]
-        with zip_ref.open(sample_csv_name) as sample_file_raw:
-            sample_file = pd.read_csv(sample_file_raw)
-    columns = sample_file.columns.tolist()
+        # Reference Median + Correlation/RMSE Calculation
+        st.subheader("Bead Correlation and RMSE NOK Detection")
+        scores = []
+        for bead_idx in range(max_beads):
+            bead_name = f"Bead {bead_idx+1}"
+            reference_signals = []
+            for file in csv_files:
+                suspected = suspected_NOK.get(file, [])
+                if (bead_idx+1) not in suspected and bead_idx < len(bead_signals[file]):
+                    reference_signals.append(bead_signals[file][bead_idx])
+            if not reference_signals:
+                continue
+            min_length = min(len(s) for s in reference_signals)
+            aligned_refs = np.array([s[:min_length] for s in reference_signals])
+            median_ref = np.median(aligned_refs, axis=0)
+            for file in csv_files:
+                if bead_idx < len(bead_signals[file]):
+                    signal = bead_signals[file][bead_idx][:min_length]
+                    corr = pearsonr(signal, median_ref)[0]
+                    rmse = np.sqrt(np.mean((signal - median_ref)**2))
+                    scores.append({
+                        "File": file,
+                        "Bead": bead_idx+1,
+                        "Correlation": corr,
+                        "RMSE": rmse
+                    })
+        score_df = pd.DataFrame(scores).sort_values(by=["Correlation", "RMSE"], ascending=[True, False])
+        st.dataframe(score_df)
 
-    filter_column = st.sidebar.selectbox("Select column for segmentation", columns)
-    threshold = st.sidebar.number_input("Segmentation threshold", value=0.0)
-    signal_column = st.sidebar.selectbox("Select signal column for analysis", columns)
+        st.info("Click a row to view bead signal vs. reference for manual inspection.")
+        selected = st.selectbox("Select row to inspect:", score_df.index)
+        if selected is not None:
+            row = score_df.loc[selected]
+            file = row["File"]
+            bead_idx = int(row["Bead"]) - 1
+            reference_signals = []
+            for f in csv_files:
+                suspected = suspected_NOK.get(f, [])
+                if (bead_idx+1) not in suspected and bead_idx < len(bead_signals[f]):
+                    reference_signals.append(bead_signals[f][bead_idx])
+            min_length = min(len(s) for s in reference_signals)
+            aligned_refs = np.array([s[:min_length] for s in reference_signals])
+            median_ref = np.median(aligned_refs, axis=0)
+            signal = bead_signals[file][bead_idx][:min_length]
+            plt.figure(figsize=(10, 4))
+            plt.plot(signal, label="Selected Bead")
+            plt.plot(median_ref, label="Reference Median", linestyle="--")
+            plt.title(f"{file} - Bead {bead_idx+1}")
+            plt.legend()
+            st.pyplot(plt)
 
-    if st.sidebar.button("Segment Beads"):
-        with open("ok.zip", "wb") as f:
-            f.write(ok_zip.getbuffer())
-        with open("test.zip", "wb") as f:
-            f.write(test_zip.getbuffer())
-
-        ok_files = extract_zip("ok.zip", "ok_data")
-        test_files = extract_zip("test.zip", "test_data")
-
-        def process_files(files):
-            bead_data = defaultdict(list)
-            for file in files:
-                df = pd.read_csv(file)
-                segments = segment_beads(df, filter_column, threshold)
-                for bead_num, (start, end) in enumerate(segments, start=1):
-                    signal = df.iloc[start:end+1][signal_column].reset_index(drop=True)
-                    bead_data[bead_num].append((os.path.basename(file), signal))
-            return bead_data
-
-        ok_beads = process_files(ok_files)
-        test_beads = process_files(test_files)
-        st.session_state["ok_beads"] = ok_beads
-        st.session_state["test_beads"] = test_beads
-        st.session_state["analysis_ready"] = True
-        st.success("✅ Bead segmentation completed.")
-
-        def generate_heatmap(bead_data, title):
-            bead_lengths = defaultdict(lambda: defaultdict(int))
-            bead_nums = set()
-            file_names = set()
-            for bead_num, entries in bead_data.items():
-                for fname, sig in entries:
-                    bead_lengths[fname][bead_num] = len(sig)
-                    bead_nums.add(bead_num)
-                    file_names.add(fname)
-            bead_nums = sorted(bead_nums)
-            file_names = sorted(file_names)
-            heatmap_data = np.zeros((len(file_names), len(bead_nums)))
-            for i, fname in enumerate(file_names):
-                for j, bead in enumerate(bead_nums):
-                    heatmap_data[i, j] = bead_lengths[fname].get(bead, 0)
-            df_hm = pd.DataFrame(heatmap_data, index=file_names, columns=bead_nums)
-            fig, ax = plt.subplots(figsize=(max(6, len(bead_nums)), max(6, len(file_names)*0.4)))
-            sns.heatmap(df_hm, annot=False, cmap="YlGnBu", ax=ax, cbar=True)
-            ax.set_title(title)
-            ax.set_xlabel("Bead Number")
-            ax.set_ylabel("File Name")
-            st.pyplot(fig)
-
-        st.markdown("### Bead Length Heatmaps")
-        col1, col2 = st.columns(2)
-        with col1:
-            generate_heatmap(ok_beads, "Bead Lengths in OK ZIP")
-        with col2:
-            generate_heatmap(test_beads, "Bead Lengths in Test ZIP")
-
-if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.session_state.get("analysis_ready", False):
-    ok_beads = st.session_state["ok_beads"]
-    test_beads = st.session_state["test_beads"]
-
-    st.sidebar.markdown("### Lower (Dip) Detection Settings")
-    drop_margin = st.sidebar.number_input("Drop Margin (% below baseline)", min_value=0.0, max_value=100.0, value=11.0, step=0.5)
-    min_drop_percent = st.sidebar.number_input("Min % of points to consider as drop", min_value=0.0, max_value=100.0, value=0.1, step=0.1)
-    max_drop_percent = st.sidebar.number_input("Max % of points to consider as drop", min_value=0.0, max_value=100.0, value=3.0, step=0.5)
-    min_duration = st.sidebar.number_input("Minimum Duration for Drop (consecutive points)", min_value=1, max_value=1000, value=25, step=1)
-    max_drop_duration = st.sidebar.number_input("Maximum Duration for Drop (consecutive points)", min_value=1, max_value=1000, value=100, step=1)
-
-    st.sidebar.markdown("### Upper (Rise) Detection Settings")
-    rise_margin = st.sidebar.number_input("Rise Margin (% above baseline)", min_value=0.0, max_value=100.0, value=40.0, step=0.5)
-    min_rise_percent = st.sidebar.number_input("Min % of points to consider as rise", min_value=0.0, max_value=100.0, value=0.1, step=0.1)
-    max_rise_percent = st.sidebar.number_input("Max % of points to consider as rise", min_value=0.0, max_value=100.0, value=3.0, step=0.5)
-    min_rise_duration = st.sidebar.number_input("Minimum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=15, step=1)
-    max_rise_duration = st.sidebar.number_input("Maximum Duration for Rise (consecutive points)", min_value=1, max_value=1000, value=20, step=1)
-
-    selected_bead = st.selectbox("Select Bead Number to Display", sorted(ok_beads.keys()))
-
-    drop_nok_files = defaultdict(list)
-    rise_nok_files = defaultdict(list)
-    drop_summary = []
-    rise_summary = []
-    beadwise_baselines = {}
-
-    for bead_num in sorted(test_beads.keys()):
-        ok_signals = [sig[:min(len(s) for _, s in ok_beads[bead_num])] for _, sig in ok_beads.get(bead_num, []) if bead_num in ok_beads]
-        if not ok_signals:
-            continue
-        ok_matrix = np.vstack(ok_signals)
-        baseline = np.median(ok_matrix, axis=0)
-        lower_line = baseline * (1 - drop_margin / 100)
-        upper_line = baseline * (1 + rise_margin / 100)
-        beadwise_baselines[bead_num] = (lower_line, upper_line)
-
-        for fname, sig in test_beads[bead_num]:
-            min_len = min(len(sig), len(lower_line), len(upper_line))
-            sig = sig[:min_len]
-            lower = lower_line[:min_len]
-            upper = upper_line[:min_len]
-
-            below = sig < lower
-            above = sig > upper
-
-            # Drop detection
-            consecutive_drops = 0
-            for i in range(1, len(below)):
-                if below[i] and below[i - 1]:
-                    consecutive_drops += 1
-                else:
-                    consecutive_drops = 0
-                if consecutive_drops >= max_drop_duration:
-                    break
-            percent_below = 100 * np.sum(below) / len(sig)
-            drop_triggered = (
-                min_drop_percent <= percent_below <= max_drop_percent and
-                min_duration <= consecutive_drops <= max_drop_duration
-            )
-            if drop_triggered:
-                drop_nok_files[fname].append(bead_num)
-            if bead_num == selected_bead:
-                drop_summary.append({"File": fname, "Bead": bead_num, "% Below": round(percent_below, 2), "NOK": drop_triggered})
-
-            # Rise detection
-            consecutive_rises = 0
-            for i in range(1, len(above)):
-                if above[i] and above[i - 1]:
-                    consecutive_rises += 1
-                else:
-                    consecutive_rises = 0
-                if consecutive_rises >= max_rise_duration:
-                    break
-            percent_above = 100 * np.sum(above) / len(sig)
-            rise_triggered = (
-                min_rise_percent <= percent_above <= max_rise_percent and
-                min_rise_duration <= consecutive_rises <= max_rise_duration
-            )
-            if rise_triggered:
-                rise_nok_files[fname].append(bead_num)
-            if bead_num == selected_bead:
-                rise_summary.append({"File": fname, "Bead": bead_num, "% Above": round(percent_above, 2), "NOK": rise_triggered})
-
-    # Plotting
-    fig = go.Figure()
-    lower_line, upper_line = beadwise_baselines.get(selected_bead)
-    for fname, sig in ok_beads.get(selected_bead, []):
-        sig = sig[:min(len(s) for _, s in ok_beads[selected_bead])]
-        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color='gray', width=1), name=f"OK: {fname}"))
-
-    for fname, sig in test_beads.get(selected_bead, []):
-        min_len = min(len(sig), len(lower_line), len(upper_line))
-        sig = sig[:min_len]
-        triggered_drop = fname in drop_nok_files and selected_bead in drop_nok_files[fname]
-        triggered_rise = fname in rise_nok_files and selected_bead in rise_nok_files[fname]
-        if triggered_drop and triggered_rise:
-            color = 'purple'
-        elif triggered_drop:
-            color = 'red'
-        elif triggered_rise:
-            color = 'orange'
-        else:
-            color = 'black'
-        fig.add_trace(go.Scatter(y=sig, mode='lines', line=dict(color=color, width=1.5), name=f"Test: {fname}"))
-
-    fig.add_trace(go.Scatter(y=lower_line[:min_len], mode='lines', name='Lower Reference', line=dict(color='green', dash='dash')))
-    fig.add_trace(go.Scatter(y=upper_line[:min_len], mode='lines', name='Upper Reference', line=dict(color='blue', dash='dash')))
-    st.plotly_chart(fig, use_container_width=True)
-
-    # Final Summary
-    all_files = sorted({fname for bead_entries in test_beads.values() for fname, _ in bead_entries})
-    final_summary = []
-    for fname in all_files:
-        drop_beads = drop_nok_files.get(fname, [])
-        rise_beads = rise_nok_files.get(fname, [])
-        all_nok_beads = sorted(set(drop_beads + rise_beads))
-        final_summary.append({
-            "File Name": fname,
-            "NOK Beads": ", ".join(map(str, all_nok_beads)),
-            "Welding Result": "NOK" if all_nok_beads else "OK",
-            "Upper NOK": ", ".join(map(str, sorted(set(rise_beads) - set(drop_beads)))),
-            "Lower NOK": ", ".join(map(str, sorted(set(drop_beads) - set(rise_beads)))),
-            "Both NOK": ", ".join(map(str, sorted(set(drop_beads) & set(rise_beads))))
-        })
-
-    st.markdown("### Final Welding Result Summary")
-    st.dataframe(pd.DataFrame(final_summary))
-
-    st.markdown("### Drop Summary Table")
-    st.dataframe(pd.DataFrame(drop_summary))
-
-    st.markdown("### Rise Summary Table")
-    st.dataframe(pd.DataFrame(rise_summary))
+        st.success("Complete pipeline executed with NOK detection ready for review.")
