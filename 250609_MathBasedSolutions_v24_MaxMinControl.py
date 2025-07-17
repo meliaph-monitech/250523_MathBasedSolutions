@@ -119,11 +119,11 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.se
     test_beads = st.session_state["test_beads"]
 
     st.sidebar.markdown("### Lower (Dip) Detection Settings")
-    drop_margin = st.sidebar.number_input("Drop Margin (% below baseline)", 0.0, 100.0, 11.0, 0.5)
+    drop_margin = st.sidebar.number_input("Drop Margin (% below baseline)", 0.0, 100.0, 10.0, 0.5)
     min_drop_percent = st.sidebar.number_input("Min % of points to consider as drop", 0.0, 100.0, 0.1, 0.1)
     
     use_max_drop_percent = st.sidebar.checkbox("Apply Max % for Drop", value=True)
-    max_drop_percent = st.sidebar.number_input("Max % of points to consider as drop", 0.0, 100.0, 3.0, 0.5) if use_max_drop_percent else float('inf')
+    max_drop_percent = st.sidebar.number_input("Max % of points to consider as drop", 0.0, 100.0, 50.0, 0.5) if use_max_drop_percent else float('inf')
 
     min_duration = st.sidebar.number_input("Minimum Duration for Drop (consecutive points)", 1, 1000, 25, 1)
     max_duration = st.sidebar.number_input("Maximum Duration for Drop (consecutive points)", 1, 1000, 1000, 1)
