@@ -196,10 +196,15 @@ if "ok_beads" in st.session_state and "test_beads" in st.session_state and st.se
                     consecutive_rises = 0
                 max_consecutive_rises = max(max_consecutive_rises, consecutive_rises)
             percent_above = 100 * np.sum(above) / len(sig)
+            # rise_triggered = (
+            #     min_rise_percent <= percent_above <= max_rise_percent and
+            #     min_rise_duration <= max_consecutive_rises <= max_rise_duration
+            # )
             rise_triggered = (
                 min_rise_percent <= percent_above <= max_rise_percent and
-                min_rise_duration <= max_consecutive_rises <= max_rise_duration
+                max_consecutive_rises >= min_rise_duration
             )
+
             if rise_triggered:
                 rise_nok_files[fname].append(bead_num)
             if bead_num == selected_bead:
