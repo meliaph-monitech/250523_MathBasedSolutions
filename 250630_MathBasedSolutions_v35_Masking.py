@@ -194,7 +194,7 @@ if "raw_beads" in st.session_state and st.session_state.get("analysis_ready", Fa
 
             if bead_num == selected_bead:
                 for start, end, _ in result["change_points"]:
-                    raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.8, layer="below", line_width=0)
+                    raw_fig.add_vrect(x0=start, x1=end, fillcolor="red", opacity=0.05, layer="below", line_width=0)
 
                 raw_fig.add_trace(go.Scatter(y=raw_sig, mode='lines', name=f"{fname} (raw)", line=dict(width=1)))
                 color = 'red' if result["change_points"] else 'black'
